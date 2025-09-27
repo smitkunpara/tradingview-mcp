@@ -77,8 +77,7 @@ def get_historical_data(
             symbol=symbol,
             timeframe=timeframe,
             numb_price_candles=numb_price_candles,
-            indicators=indicators,
-            jwt_token=os.getenv("TRADINGVIEW_JWT_TOKEN")
+            indicators=indicators
         )
         return result
     except ValidationError as e:
@@ -156,17 +155,7 @@ def get_news_headlines(
                 "count": 0
             }
         
-        return {
-            "success": True,
-            "headlines": headlines,
-            "count": len(headlines),
-            "symbol": symbol,
-            "filters": {
-                "exchange": exchange,
-                "provider": provider if provider != "all" else "all providers",
-                "area": area
-            }
-        }
+        return headlines
         
     except ValidationError as e:
         return {
@@ -222,16 +211,7 @@ def get_news_content(
         successful = [a for a in articles if a.get("success", False)]
         failed = [a for a in articles if not a.get("success", False)]
         
-        return {
-            "success": True,
-            "articles": articles,
-            "summary": {
-                "total_requested": len(story_paths),
-                "successful": len(successful),
-                "failed": len(failed)
-            },
-            "message": f"Fetched {len(successful)} of {len(story_paths)} articles successfully"
-        }
+        return articles
         
     except ValidationError as e:
         return {

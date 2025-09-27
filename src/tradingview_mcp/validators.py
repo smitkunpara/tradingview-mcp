@@ -59,13 +59,6 @@ VALID_AREAS = ['world', 'americas', 'europe', 'asia', 'oceania', 'africa']
 # === INDICATOR MAPPING ===
 INDICATOR_MAPPING = {
     "RSI": ("STD;RSI", "44.0"),
-    "MACD": ("STD;MACD", "63.0"),
-    "BB": ("STD;BB", "22.0"),
-    "EMA": ("STD;EMA", "25.0"),
-    "SMA": ("STD;SMA", "25.0"),
-    "VWAP": ("STD;VWAP", "25.0"),
-    "VOL": ("STD;Volume", "25.0"),
-    # Add more indicators as needed
 }
 
 VALID_INDICATORS = list(INDICATOR_MAPPING.keys())

@@ -68,7 +68,7 @@ def merge_ohlc_with_indicators(data: Dict) -> List[Dict]:
     indicator_data = data.get('indicator', {})
     
     if not ohlc_data:
-        raise ValueError("No OHLC data found in response from TradingView")
+        raise ValueError("No OHLC data found in response from TradingView. Please verify the JWT token and parameters.")
     
     # Get RSI data (assuming only RSI indicator for now)
     rsi_data = None
