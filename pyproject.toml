@@ -10,6 +10,7 @@ dependencies = [
     "pytz>=2024.1",
     "beautifulsoup4>=4.12.0",
     "setuptools>=80.9.0",
+    "tradingview-scraper",
 ]
 
 [build-system]
@@ -18,3 +19,6 @@ build-backend = "hatchling.build"
 
 [tool.uv]
 dev-dependencies = []
+
+[tool.uv.sources]
+tradingview-scraper = { git = "https://github.com/smitkunpara/tradingview-scraper.git" }

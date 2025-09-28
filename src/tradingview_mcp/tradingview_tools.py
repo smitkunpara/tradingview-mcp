@@ -6,6 +6,7 @@ import json
 from typing import List, Dict, Optional, Any
 from tradingview_scraper.symbols.stream import Streamer
 from tradingview_scraper.symbols.news import NewsScraper
+from tradingview_scraper.symbols.technicals import Indicators
 import os
 
 from .validators import (
@@ -224,3 +225,70 @@ def fetch_news_content(story_paths: List[str]) -> List[Dict[str, Any]]:
             })
     
     return news_content
+
+
+def fetch_all_indicators(
+    exchange: str,
+    symbol: str,
+    timeframe: str
+) -> Dict[str, Any]:
+    """
+    Retrieve current values for all available technical indicators from TradingView.
+
+    This function uses the `Indicators` scraper to request the full set of
+    indicator values for the given symbol / exchange / timeframe. It returns
+    a normalized dictionary with a boolean `success` flag and the raw
+    `data` payload (only the current indicator snapshot).
+
+    Args:
+        exchange: Stock exchange name (e.g., 'NSE', 'NASDAQ'). Will be validated.
+        symbol: Trading symbol (e.g., 'NIFTY', 'AAPL'). Required.
+        timeframe: Timeframe string (one of VALID_TIMEFRAMES).
+
+    Returns:
+        A dict with keys:
+        - success: bool
+        - data: dict of indicator current values (if successful)
+        - message: error message when success is False
+
+    Raises:
+        ValidationError: If validation fails for any parameter
+    """
+    # Validate inputs
+    exchange = validate_exchange(exchange)
+    symbol = validate_symbol(symbol)
+    timeframe = validate_timeframe(timeframe)
+
+    try:
+        indicators_scraper = Indicators(
+            export_result=True,
+            export_type='json'
+        )
+
+        # Request all indicators (current snapshot)
+        raw = indicators_scraper.scrape(
+            symbol=symbol,
+            exchange=exchange,
+            timeframe=timeframe,
+            allIndicators=True
+        )
+
+        # The scraper typically returns a dict with 'status' and 'data'.
+        if isinstance(raw, dict) and raw.get('status') in ('success', True):
+            return {
+                'success': True,
+                'data': raw.get('data', {})
+            }
+
+        # Fallback: return raw payload if format unexpected
+        return {
+            'success': False,
+            'message': f'Unexpected response from Indicators scraper: {type(raw)}',
+            'raw': raw
+        }
+
+    except Exception as e:
+        return {
+            'success': False,
+            'message': f'Failed to fetch indicators: {str(e)}'
+        }

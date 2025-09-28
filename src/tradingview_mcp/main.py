@@ -15,6 +15,7 @@ from .tradingview_tools import (
     fetch_news_headlines,
     fetch_news_content
 )
+from .tradingview_tools import fetch_all_indicators
 from .validators import (
     VALID_EXCHANGES, VALID_TIMEFRAMES, VALID_NEWS_PROVIDERS,
     VALID_AREAS, VALID_INDICATORS, ValidationError
@@ -229,6 +230,76 @@ def get_news_content(
         }
 
 
+@mcp.tool
+def get_all_indicators(
+    symbol: Annotated[str, Field(
+        description="Trading symbol/ticker (e.g., 'NIFTY', 'AAPL', 'BTCUSD'). Required.",
+        min_length=1,
+        max_length=20
+    )],
+    exchange: Annotated[str, Field(
+        description=(
+            "Stock exchange name (e.g., 'NSE', 'NASDAQ'). Must be one of the valid exchanges. "
+            f"Valid examples: {', '.join(VALID_EXCHANGES[:5])}... Use uppercase format."
+        ),
+        min_length=2,
+        max_length=30
+    )],
+    timeframe: Annotated[Literal['1m', '5m', '15m', '30m', '1h', '2h', '4h', '1d', '1w', '1M'], Field(
+        description=(
+            "Time interval for indicator snapshot. Valid options: "
+            f"{', '.join(VALID_TIMEFRAMES)}"
+        )
+    )] = '1m'
+) -> dict:
+    """
+    Return current values for all available technical indicators for a symbol.
+
+    This tool calls the internal indicators scraper and returns a dictionary of
+    current indicator values (a snapshot). It is designed to provide only the
+    latest/current values (not historical series).
+
+    Parameters
+    - symbol (str): Trading symbol, e.g. 'NIFTY', 'AAPL'.
+    - exchange (str): Exchange name, e.g. 'NSE'. Use uppercase from VALID_EXCHANGES.
+    - timeframe (str): Timeframe for the indicator snapshot. One of: 1m, 5m, 15m, 30m, 1h, 2h, 4h, 1d, 1w, 1M.
+
+    Returns
+    - success (bool): Whether the fetch succeeded.
+    - data (dict): Mapping of indicator name -> current value (when success=True).
+    - message (str): Error message when success=False.
+
+    Example
+    - get_all_indicators('NIFTY', 'NSE', '1m')
+
+    Note: The underlying scraper may require a TRADINGVIEW_JWT_TOKEN environment
+    variable to be set for private API access. If missing you may receive errors.
+    """
+    try:
+        # Validate parameters explicitly using centralized validators so errors are
+        # consistent with the rest of the codebase and reference VALID_* constants.
+        from .validators import validate_exchange, validate_timeframe, validate_symbol
+
+        exchange = validate_exchange(exchange)
+        symbol = validate_symbol(symbol)
+        timeframe = validate_timeframe(timeframe)
+
+        result = fetch_all_indicators(exchange=exchange, symbol=symbol, timeframe=timeframe)
+        return result
+    except ValidationError as e:
+        return {
+            "success": False,
+            "message": str(e),
+            "data": {}
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Unexpected error: {str(e)}",
+            "data": {}
+        }
+
+
 def main():
     """Run the MCP server."""
     print("🚀 Starting TradingView MCP Server...")
@@ -236,6 +307,7 @@ def main():
     print("   - get_historical_data: Fetch OHLCV data with indicators")
     print("   - get_news_headlines: Get latest news headlines")
     print("   - get_news_content: Fetch full news articles")
+    print("   - get_all_indicators: Get current values for all technical indicators")
     print("\n⚡ Server is ready!")
     mcp.run()
 
