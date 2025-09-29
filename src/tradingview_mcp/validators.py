@@ -59,6 +59,32 @@ VALID_AREAS = ['world', 'americas', 'europe', 'asia', 'oceania', 'africa']
 # === INDICATOR MAPPING ===
 INDICATOR_MAPPING = {
     "RSI": ("STD;RSI", "44.0"),
+    "MACD": ("STD;MACD", "38.0"),
+    "CCI": ("STD;CCI", "37.0"),
+    "BB": ("STD;Bollinger_Bands", "32.0"),
+}
+
+# === INDICATOR FIELD MAPPING ===
+# Maps each indicator to its output fields with their respective indices
+INDICATOR_FIELD_MAPPING = {
+    "RSI": {
+        "2": "Relative_Strength_Index",
+        "0": "Relative_Strength_Index_Moving_Average"
+    },
+    "MACD": {
+        "4": "Moving_Average_Convergence_Divergence_macd",
+        "5": "Moving_Average_Convergence_Divergence_signal", 
+        "2": "Moving_Average_Convergence_Divergence_histogram"
+    },
+    "CCI": {
+        "0": "Commodity_Channel_Index",
+        "1": "Commodity_Channel_Index_Moving_Average"
+    },
+    "BB": {
+        "0": "Bollinger_Bands_middle_line",
+        "1": "Bollinger_Bands_top_line", 
+        "2": "Bollinger_Bands_bottom_line"
+    }
 }
 
 VALID_INDICATORS = list(INDICATOR_MAPPING.keys())
@@ -162,6 +188,8 @@ def validate_indicators(indicators: List[str]) -> tuple[List[str], List[str], Li
     """
     Validate and map indicators to TradingView IDs.
     
+    Note: Free TradingView accounts are limited to maximum 2 indicators per request.
+    
     Args:
         indicators: List of indicator names
         
@@ -171,6 +199,16 @@ def validate_indicators(indicators: List[str]) -> tuple[List[str], List[str], Li
     indicator_ids = []
     indicator_versions = []
     errors = []
+    
+    # Check for free account limitation
+    MAX_INDICATORS = 2
+    if len(indicators) > MAX_INDICATORS:
+        errors.append(
+            f"Too many indicators requested ({len(indicators)}). Free TradingView accounts "
+            f"support maximum {MAX_INDICATORS} indicators per request. "
+            f"Please reduce to {MAX_INDICATORS} or fewer indicators."
+        )
+        return [], [], errors
     
     for indicator in indicators:
         indicator_upper = indicator.upper()

@@ -7,6 +7,8 @@ from typing import List, Dict, Optional, Any
 from tradingview_scraper.symbols.stream import Streamer
 from tradingview_scraper.symbols.news import NewsScraper
 from tradingview_scraper.symbols.technicals import Indicators
+from tradingview_screener import Query, col
+import pandas as pd
 import os
 
 from .validators import (
@@ -30,12 +32,14 @@ def fetch_historical_data(
     """
     Fetch historical data from TradingView with indicators.
     
+    Note: Free TradingView accounts are limited to maximum 2 indicators per request.
+    
     Args:
         exchange: Stock exchange name
         symbol: Trading symbol
         timeframe: Time interval for candles
         numb_price_candles: Number of candles to fetch
-        indicators: List of technical indicators
+        indicators: List of technical indicators (max 2 for free accounts)
         
     Returns:
         Dictionary with merged data and any errors
@@ -55,6 +59,15 @@ def fetch_historical_data(
         )
     
     indicator_ids, indicator_versions, errors = validate_indicators(indicators)
+    
+    # Check for validation errors
+    if errors:
+        return {
+            'success': False,
+            'data': [],
+            'errors': errors,
+            'message': f"Validation failed: {'; '.join(errors)}"
+        }
 
     try:
         streamer = Streamer(
@@ -291,4 +304,245 @@ def fetch_all_indicators(
         return {
             'success': False,
             'message': f'Failed to fetch indicators: {str(e)}'
+        }
+
+
+def fetch_trading_analysis(
+    symbol: str,
+    exchange: str,
+    market: str = "america"
+) -> Dict[str, Any]:
+    """
+    Fetch comprehensive trading analysis data for a given stock symbol.
+    
+    This function provides a rich set of data points covering fundamental health,
+    technical signals, and overall market sentiment. It returns financial metrics,
+    performance data, volatility indicators, and analyst recommendations.
+    
+    Args:
+        symbol: Stock ticker symbol (e.g., 'AAPL', 'NIFTY')
+        exchange: Exchange name (e.g., 'NASDAQ', 'NSE')
+        market: Market region ('america', 'india', 'crypto', etc.)
+        
+    Returns:
+        Dictionary with:
+        - success: bool indicating if the operation succeeded
+        - data: dict containing comprehensive analysis data when successful
+        - message: error message when unsuccessful
+        - metadata: information about the request
+    
+    Raises:
+        ValidationError: If validation fails for any parameter
+    """
+    # Validate inputs
+    symbol = validate_symbol(symbol)
+    exchange = validate_exchange(exchange) if exchange else None
+    
+    # Validate market
+    valid_markets = ['america', 'india', 'crypto', 'forex', 'bond', 'futures']
+    if market.lower() not in valid_markets:
+        raise ValidationError(
+            f"Invalid market '{market}'. Must be one of: {', '.join(valid_markets)}"
+        )
+    
+    try:
+        # Construct query for the specific market
+        query = Query().set_markets(market.lower())
+        
+        # Select only basic universally supported fields
+        query.select(
+            # Basic Identity
+            'name', 'description', 'close',
+            
+            # Core Price & Volume
+            'open', 'high', 'low', 'volume', 'change', 'change_abs',
+            
+            # Performance
+            'Perf.W', 'Perf.1M', 'Perf.3M', 'Perf.6M', 'Perf.YTD', 'Perf.Y',
+            
+            # Technical Indicators (from indicators feature)
+            'RSI', 'RSI[1]', 'Stoch.K', 'Stoch.D', 'CCI20', 'ADX', 'MACD.macd',
+            'MACD.signal', 'Mom', 'AO', 'UO', 'W.R', 'BBPower',
+            'Ichimoku.BLine', 'VWMA', 'HullMA9',
+            
+            # Moving Averages
+            'SMA10', 'SMA20', 'SMA50', 'SMA100', 'SMA200',
+            'EMA10', 'EMA20', 'EMA50', 'EMA100', 'EMA200',
+            
+            # Recommendations
+            'Recommend.All', 'Recommend.MA', 'Recommend.Other',
+        )
+        
+        # Set specific ticker instead of filtering (more reliable)
+        if exchange:
+            ticker = f"{exchange}:{symbol}"
+            query.set_tickers(ticker)
+        
+        # Fetch the data
+        try:
+            count, df = query.get_scanner_data()
+        except Exception as e:
+            return {
+                'success': False,
+                'message': f'Scanner query failed: {str(e)}',
+                'data': {},
+                'metadata': {
+                    'symbol': symbol,
+                    'exchange': exchange,
+                    'market': market,
+                    'error_type': type(e).__name__
+                }
+            }
+        
+        # Handle empty data
+        df_is_empty = False
+        try:
+            if hasattr(df, 'empty'):  # pandas DataFrame
+                df_is_empty = df.empty
+            elif hasattr(df, '__len__'):  # list or similar
+                df_is_empty = len(df) == 0
+            else:
+                df_is_empty = not df
+        except:
+            df_is_empty = not df
+            
+        if df_is_empty:
+            return {
+                'success': False,
+                'message': f"No data found for symbol '{symbol}' on exchange '{exchange}' in market '{market}'. Please verify the symbol and exchange are correct.",
+                'data': {},
+                'metadata': {
+                    'symbol': symbol,
+                    'exchange': exchange,
+                    'market': market,
+                    'total_count': count,
+                    'dataframe_empty': True
+                }
+            }
+
+        # Convert to dictionary format for better JSON serialization
+        result_data = {}
+        try:
+            # Handle pandas DataFrame
+            if hasattr(df, 'iloc') and hasattr(df, 'columns'):  # DataFrame
+                if len(df) > 0:
+                    # Get first row as dictionary
+                    first_row = df.iloc[0]
+                    result_data = first_row.to_dict()
+            # Handle other data structures
+            elif hasattr(df, '__len__') and len(df) > 0:
+                if hasattr(df, 'columns'):  # Has column info
+                    result_data = dict(zip(df.columns, df.iloc[0] if hasattr(df, 'iloc') else df[0]))
+                else:
+                    # Fallback - just return what we got
+                    result_data = {'raw_data': df}
+        except Exception as e:
+            # Fallback: return error with debug info
+            return {
+                'success': False,
+                'message': f'Data processing error: {str(e)}',
+                'data': {},
+                'debug_info': {
+                    'data_type': str(type(df)),
+                    'data_str': str(df)[:200] if df is not None else 'None',
+                    'count': count,
+                    'has_columns': hasattr(df, 'columns'),
+                    'has_iloc': hasattr(df, 'iloc'),
+                }
+            }        # Clean and organize the data safely
+        def safe_get(data_dict, key, default=None):
+            """Safely get value from dict, handling any data type"""
+            try:
+                return data_dict.get(key, default)
+            except:
+                return default
+        
+        organized_data = {
+            'basic_info': {
+                'name': safe_get(result_data, 'name'),
+                'description': safe_get(result_data, 'description'),
+                'type': safe_get(result_data, 'type'),
+                'exchange': exchange,
+                'market': market,
+            },
+            'price_volume': {
+                'close': safe_get(result_data, 'close'),
+                'open': safe_get(result_data, 'open'),
+                'high': safe_get(result_data, 'high'),
+                'low': safe_get(result_data, 'low'),
+                'volume': safe_get(result_data, 'volume'),
+            },
+            'performance': {
+                'change': safe_get(result_data, 'change'),
+                'change_abs': safe_get(result_data, 'change_abs'),
+                'week_performance': safe_get(result_data, 'Perf.W'),
+                'month_1_performance': safe_get(result_data, 'Perf.1M'),
+                'month_3_performance': safe_get(result_data, 'Perf.3M'),
+                'month_6_performance': safe_get(result_data, 'Perf.6M'),
+                'ytd_performance': safe_get(result_data, 'Perf.YTD'),
+                'year_performance': safe_get(result_data, 'Perf.Y'),
+            },
+            'technical_indicators': {
+                'rsi': safe_get(result_data, 'RSI'),
+                'rsi_previous': safe_get(result_data, 'RSI[1]'),
+                'stoch_k': safe_get(result_data, 'Stoch.K'),
+                'stoch_d': safe_get(result_data, 'Stoch.D'),
+                'cci': safe_get(result_data, 'CCI20'),
+                'adx': safe_get(result_data, 'ADX'),
+                'macd': safe_get(result_data, 'MACD.macd'),
+                'macd_signal': safe_get(result_data, 'MACD.signal'),
+                'momentum': safe_get(result_data, 'Mom'),
+                'awesome_oscillator': safe_get(result_data, 'AO'),
+                'ultimate_oscillator': safe_get(result_data, 'UO'),
+                'williams_r': safe_get(result_data, 'W.R'),
+                'bb_power': safe_get(result_data, 'BBPower'),
+                'ichimoku_base': safe_get(result_data, 'Ichimoku.BLine'),
+                'vwma': safe_get(result_data, 'VWMA'),
+                'hull_ma': safe_get(result_data, 'HullMA9'),
+            },
+            'moving_averages': {
+                'sma_10': safe_get(result_data, 'SMA10'),
+                'sma_20': safe_get(result_data, 'SMA20'),
+                'sma_50': safe_get(result_data, 'SMA50'),
+                'sma_100': safe_get(result_data, 'SMA100'),
+                'sma_200': safe_get(result_data, 'SMA200'),
+                'ema_10': safe_get(result_data, 'EMA10'),
+                'ema_20': safe_get(result_data, 'EMA20'),
+                'ema_50': safe_get(result_data, 'EMA50'),
+                'ema_100': safe_get(result_data, 'EMA100'),
+                'ema_200': safe_get(result_data, 'EMA200'),
+            },
+            'recommendations': {
+                'overall_recommendation': safe_get(result_data, 'Recommend.All'),
+                'ma_recommendation': safe_get(result_data, 'Recommend.MA'),
+                'other_recommendation': safe_get(result_data, 'Recommend.Other'),
+            },
+        }
+        
+        return {
+            'success': True,
+            'data': organized_data,
+            'metadata': {
+                'symbol': symbol,
+                'exchange': exchange,
+                'market': market,
+                'fields_count': len([v for v in result_data.values() if v is not None]),
+                'total_count': count,
+                'df_columns': list(df.columns) if hasattr(df, 'columns') else []
+            }
+        }
+        
+    except Exception as e:
+        import traceback
+        return {
+            'success': False,
+            'message': f'Failed to fetch trading analysis: {str(e)}',
+            'data': {},
+            'metadata': {
+                'symbol': symbol,
+                'exchange': exchange,
+                'market': market,
+                'error_type': type(e).__name__,
+                'traceback': traceback.format_exc()
+            }
         }

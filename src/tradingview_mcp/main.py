@@ -15,7 +15,7 @@ from .tradingview_tools import (
     fetch_news_headlines,
     fetch_news_content
 )
-from .tradingview_tools import fetch_all_indicators
+from .tradingview_tools import fetch_all_indicators, fetch_trading_analysis
 from .validators import (
     VALID_EXCHANGES, VALID_TIMEFRAMES, VALID_NEWS_PROVIDERS,
     VALID_AREAS, VALID_INDICATORS, ValidationError
@@ -300,6 +300,94 @@ def get_all_indicators(
         }
 
 
+@mcp.tool
+def get_trading_analysis(
+    symbol: Annotated[str, Field(
+        description="Trading symbol/ticker (e.g., 'AAPL', 'NIFTY', 'TSLA'). Required.",
+        min_length=1,
+        max_length=20
+    )],
+    exchange: Annotated[str, Field(
+        description=(
+            "Stock exchange name (e.g., 'NASDAQ', 'NSE', 'NYSE'). Must be one of the valid exchanges. "
+            f"Valid examples: {', '.join(VALID_EXCHANGES[:5])}... Use uppercase format."
+        ),
+        min_length=2,
+        max_length=30
+    )],
+    market: Annotated[Literal['america', 'india', 'crypto', 'forex', 'bond', 'futures'], Field(
+        description="Market region to search in. Options: america, india, crypto, forex, bond, futures"
+    )] = 'america'
+) -> dict:
+    """
+    Get comprehensive trading analysis for a stock including fundamentals, technicals, and sentiment.
+    
+    This tool provides an extensive analysis covering multiple aspects of a stock:
+    - Basic company information (name, sector, industry)
+    - Price and volume data (current prices, trading volume, relative volume)
+    - Performance metrics (1D, 1W, 1M, 3M, 6M, YTD, 1Y, 5Y returns)
+    - Fundamental health (P/E, P/B, debt ratios, profitability metrics)
+    - Dividend information (yield, payout ratio, dividends per share)
+    - Risk and volatility measures (beta, ATR, volatility across timeframes)
+    - Technical indicators (RSI, MACD, Stochastic, ADX, momentum indicators)
+    - Moving averages (SMA and EMA for 10, 20, 50, 100, 200 periods)
+    - Analyst recommendations and technical signal consensus
+    - Company details (employees, shares outstanding)
+    
+    Parameters:
+    - symbol (str): Stock ticker symbol (e.g., 'AAPL' for Apple Inc.)
+    - exchange (str): Exchange where the stock is traded (e.g., 'NASDAQ', 'NSE')
+    - market (str): Market region - 'america' for US stocks, 'india' for Indian stocks, etc.
+    
+    Returns:
+    - success (bool): Whether the analysis was successfully retrieved
+    - data (dict): Organized analysis data with sections for different metric categories
+    - metadata (dict): Information about the request and data quality
+    - message (str): Error description if success is False
+    
+    Example usage:
+    - US stock: get_trading_analysis('AAPL', 'NASDAQ', 'america')
+    - Indian stock: get_trading_analysis('NIFTY', 'NSE', 'india')
+    - Crypto: get_trading_analysis('BTCUSD', 'BINANCE', 'crypto')
+    
+    Note: The function organizes data into logical categories (fundamentals, technicals, 
+    performance, etc.) for easier analysis and decision-making.
+    """
+    try:
+        # Validate parameters explicitly using centralized validators
+        from .validators import validate_exchange, validate_symbol
+        
+        exchange = validate_exchange(exchange)
+        symbol = validate_symbol(symbol)
+        
+        result = fetch_trading_analysis(symbol=symbol, exchange=exchange, market=market)
+        return result
+        
+    except ValidationError as e:
+        return {
+            "success": False,
+            "message": str(e),
+            "data": {},
+            "metadata": {
+                "symbol": symbol,
+                "exchange": exchange,
+                "market": market
+            }
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Unexpected error: {str(e)}",
+            "data": {},
+            "metadata": {
+                "symbol": symbol,
+                "exchange": exchange,
+                "market": market,
+                "error_type": type(e).__name__
+            }
+        }
+
+
 def main():
     """Run the MCP server."""
     print("🚀 Starting TradingView MCP Server...")
@@ -308,6 +396,7 @@ def main():
     print("   - get_news_headlines: Get latest news headlines")
     print("   - get_news_content: Fetch full news articles")
     print("   - get_all_indicators: Get current values for all technical indicators")
+    print("   - get_trading_analysis: Get comprehensive trading analysis (fundamentals, technicals, sentiment)")
     print("\n⚡ Server is ready!")
     mcp.run()
 
