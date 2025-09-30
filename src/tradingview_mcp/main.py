@@ -3,12 +3,11 @@ FastMCP server for TradingView data scraping.
 Provides tools for fetching historical data, news headlines, and news content.
 """
 
-import os
 from typing import Annotated, List, Optional, Literal
 from pydantic import Field
 from fastmcp import FastMCP
 from dotenv import load_dotenv
-import os
+import json
 
 from .tradingview_tools import (
     fetch_historical_data,
@@ -18,7 +17,7 @@ from .tradingview_tools import (
 from .tradingview_tools import fetch_all_indicators, fetch_trading_analysis
 from .validators import (
     VALID_EXCHANGES, VALID_TIMEFRAMES, VALID_NEWS_PROVIDERS,
-    VALID_AREAS, VALID_INDICATORS, ValidationError
+    VALID_AREAS, ValidationError,INDICATOR_MAPPING
 )
 
 # Load environment variables
@@ -49,8 +48,8 @@ def get_historical_data(
         le=5000
     )],
     indicators: Annotated[List[str], Field(
-        description=f"List of technical indicators to include. Valid options: {', '.join(VALID_INDICATORS)}. Currently supports RSI. Example: ['RSI']",
-        max_length=10
+        description=f"List of technical indicators to include. Options: {', '.join(INDICATOR_MAPPING.keys())}. Example: ['RSI', 'MACD']. Leave empty for no indicators.",
+        max_length=2
     )] = []
 ) -> dict:
     """
@@ -80,7 +79,18 @@ def get_historical_data(
             numb_price_candles=numb_price_candles,
             indicators=indicators
         )
-        return result
+        #export result in the the export/<timstamp>_<symbol>_<timeframe>.json
+        try:
+            timestamp = result.get("data", {})[0].get("datetime_ist")
+        except:
+            timestamp = "no-timestamp"
+        filename = f"/home/smitkunpara/Desktop/Trading bot/export/{timestamp}_{symbol}_{timeframe}.json"
+
+        with open(filename, 'w') as f:
+            json.dump(result, f, indent=4)
+        
+        return {"file_path":filename , "data" : result}
+    
     except ValidationError as e:
         return {
             "success": False,
