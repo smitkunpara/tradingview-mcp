@@ -12,13 +12,16 @@ import json
 from .tradingview_tools import (
     fetch_historical_data,
     fetch_news_headlines,
-    fetch_news_content
+    fetch_news_content,
+    fetch_all_indicators,
+    fetch_trading_analysis,
+    fetch_ideas
 )
-from .tradingview_tools import fetch_all_indicators, fetch_trading_analysis
 from .validators import (
     VALID_EXCHANGES, VALID_TIMEFRAMES, VALID_NEWS_PROVIDERS,
-    VALID_AREAS, ValidationError,INDICATOR_MAPPING
+    VALID_AREAS, ValidationError,INDICATOR_MAPPING,validate_symbol
 )
+
 
 # Load environment variables
 load_dotenv()
@@ -396,6 +399,82 @@ def get_trading_analysis(
                 "error_type": type(e).__name__
             }
         }
+
+
+@mcp.tool
+def get_ideas(
+    symbol: Annotated[str, Field(
+        description="Trading symbol/ticker (e.g., 'NIFTY', 'AAPL', 'BTCUSD'). Search online for correct symbol format for your exchange.",
+        min_length=1,
+        max_length=20
+    )],
+    startPage: Annotated[int, Field(
+        description="Starting page number for scraping ideas",
+        ge=1,
+        le=10
+    )] = 1,
+    endPage: Annotated[int, Field(
+        description="Ending page number for scraping ideas",
+        ge=1,
+        le=10
+    )] = 1,
+    sort: Annotated[Literal['popular', 'recent'], Field(
+        description="Sorting order for ideas. 'popular' for most liked, 'recent' for latest."
+    )] = 'popular'
+) -> dict:
+    """
+    Scrape trading ideas from TradingView for a specific symbol.
+
+    Fetches trading ideas related to a trading symbol from TradingView. Returns structured idea data including title, author, publication time, and idea content.
+
+    Parameters:
+    - symbol (str): Trading symbol/ticker (e.g., 'NIFTY', 'AAPL', 'BTCUSD').
+    - startPage (int): Starting page number for scraping ideas.
+    - endPage (int): Ending page number for scraping ideas. Must be >= startPage.
+    - sort (str): Sorting order for ideas. Options: 'popular' or 'recent'.
+
+    Returns:
+    - success (bool): Whether the scrape was successful.
+    - ideas (list): List of scraped ideas with details.
+    - count (int): Number of ideas scraped.
+    - message (str): Error message if scrape failed.
+
+    Example usage:
+    - Get popular ideas for NIFTY from page 1 to 2:
+      get_ideas("NIFTY", 1, 2, "popular")
+
+    Note :
+    - to avoid extra time for sraping recomanded 1-3 page for latest and popular ideas.
+
+    Note: The function may require a TRADINGVIEW_JWT_TOKEN environment variable to be set for private API access.
+    """
+    try:
+        # Validate parameters explicitly using centralized validators
+        symbol = validate_symbol(symbol)
+
+        result = fetch_ideas(
+            symbol=symbol,
+            startPage=startPage,
+            endPage=endPage,
+            sort=sort
+        )
+
+        return result
+    except ValidationError as e:
+        return {
+            "success": False,
+            "message": str(e),
+            "ideas": [],
+            "help": "Please check the parameter values and try again."
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Unexpected error: {str(e)}",
+            "ideas": [],
+            "help": "An unexpected error occurred. Please verify your inputs and try again."
+        }
+
 
 
 def main():

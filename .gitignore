@@ -17,3 +17,7 @@ wheels/
 tradingview-scraper
 /export
 uv.lock
+.roocode
+.roo
+
+*test*.py

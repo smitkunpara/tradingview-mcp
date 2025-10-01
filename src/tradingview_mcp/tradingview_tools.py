@@ -7,6 +7,7 @@ from typing import List, Dict, Optional, Any
 from tradingview_scraper.symbols.stream import Streamer
 from tradingview_scraper.symbols.news import NewsScraper
 from tradingview_scraper.symbols.technicals import Indicators
+from tradingview_scraper.symbols.ideas import Ideas
 from tradingview_screener import Query, col
 import pandas as pd
 import os
@@ -545,4 +546,70 @@ def fetch_trading_analysis(
                 'error_type': type(e).__name__,
                 'traceback': traceback.format_exc()
             }
+        }
+
+
+def fetch_ideas(
+    symbol: str,
+    startPage: int = 1,
+    endPage: int = 1,
+    sort: str = 'popular',
+    export_result: bool = True,
+    export_type: str = 'json'
+) -> Dict[str, Any]:
+    """
+    Fetch trading ideas for a given symbol using the Ideas scraper.
+
+    Args:
+        symbol: Trading symbol/ticker
+        startPage: Starting page number (>=1)
+        endPage: Ending page number (>= startPage)
+        sort: 'popular' or 'recent'
+        export_result: Whether to export results (passed to Ideas)
+        export_type: Export format for Ideas
+
+    Returns:
+        Dict with keys: success (bool), ideas (list), count (int), message (str)
+
+    Raises:
+        ValidationError: For invalid inputs
+    """
+    # Validate inputs
+    symbol = validate_symbol(symbol)
+
+    if endPage < startPage:
+        raise ValidationError("endPage must be greater than or equal to startPage.")
+
+    if sort not in ('popular', 'recent'):
+        raise ValidationError("sort must be either 'popular' or 'recent'.")
+
+    try:
+        ideas_scraper = Ideas(
+            export_result=export_result,
+            export_type=export_type
+        )
+
+        ideas = ideas_scraper.scrape(
+            symbol=symbol,
+            startPage=startPage,
+            endPage=endPage,
+            sort=sort
+        )
+
+        return {
+            'success': True,
+            'ideas': ideas,
+            'count': len(ideas) if ideas is not None else 0,
+            'message': f"Scraped {len(ideas) if ideas is not None else 0} ideas for symbol '{symbol}'"
+        }
+
+    except ValidationError:
+        # Re-raise validation errors so callers can handle them consistently
+        raise
+    except Exception as e:
+        return {
+            'success': False,
+            'ideas': [],
+            'count': 0,
+            'message': f'Failed to fetch ideas: {str(e)}'
         }
