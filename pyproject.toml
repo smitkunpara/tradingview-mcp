@@ -10,9 +10,9 @@ dependencies = [
     "pytz>=2024.1",
     "beautifulsoup4>=4.12.0",
     "setuptools>=80.9.0",
-    "tradingview-screener>=0.6.0",
     "tradingview-scraper @ git+https://github.com/smitkunpara/tradingview-scraper.git",
     "pandas>=2.0.0",
+    "tradingview_screener",
 ]
 
 [build-system]

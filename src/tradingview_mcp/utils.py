@@ -74,19 +74,16 @@ def merge_ohlc_with_indicators(data: Dict) -> List[Dict]:
     if not ohlc_data:
         raise ValueError("No OHLC data found in response from TradingView. Please verify the JWT token and parameters.")
     
-    # Extract all available indicators (limited to max 2 for free accounts)
+    # Combine all indicator arrays provided. The caller may supply indicator
+    # data collected across multiple batched requests; these will all appear
+    # under the "indicator" dict keyed by TradingView indicator keys.
     available_indicators = {}
-    indicator_count = 0
-    max_indicators = 2  # Free account limitation
-    
     for indicator_short, (indicator_key, _) in INDICATOR_MAPPING.items():
-        if indicator_count >= max_indicators:
-            break  # Respect free account limits
-            
+        # If indicator present under the tradingview key, take its array
         for indicator_name, indicator_values in indicator_data.items():
             if indicator_key == indicator_name:
-                available_indicators[indicator_short] = indicator_values
-                indicator_count += 1
+                # Ensure we copy the list to avoid mutating caller data
+                available_indicators[indicator_short] = list(indicator_values)
                 break
     
     if not available_indicators:
@@ -106,34 +103,35 @@ def merge_ohlc_with_indicators(data: Dict) -> List[Dict]:
             merged_data.append(merged_entry)
         return merged_data
     
-    # Prepare indicator data matched to OHLC length
-    matched_indicators = {}
+    # We'll match indicator entries to OHLC candles by timestamp. Since
+    # indicators may come from multiple requests and may include one extra
+    # candle to avoid conflicts, do a timestamp-based lookup instead of
+    # position-based strict equality. Collect any mismatches as warnings
+    # (returned via a special _errors key inside merged entries list metadata
+    # if needed by callers).
+
+    # Build a mapping from ohlc timestamp -> index in ohlc_data
+    ohlc_index_by_ts = {entry.get('timestamp'): idx for idx, entry in enumerate(ohlc_data)}
+
+    # Prepare per-indicator maps: indicator_short -> {timestamp: entry}
+    indicator_maps = {}
     for indicator_short, indicator_values in available_indicators.items():
-        matched_indicators[indicator_short] = indicator_values[:len(ohlc_data)]
-    
-    # Create merged data structure
+        ts_map = {}
+        for item in indicator_values:
+            ts = item.get('timestamp')
+            if ts is not None:
+                # If duplicate timestamps exist, prefer the earliest occurrence
+                if ts not in ts_map:
+                    ts_map[ts] = item
+        indicator_maps[indicator_short] = ts_map
+
     merged_data = []
-    
+    errors = []
+
     for i, ohlc_entry in enumerate(ohlc_data):
         ohlc_timestamp = ohlc_entry.get('timestamp')
-        
-        # Validate timestamps match for all indicators
-        for indicator_short, indicator_values in matched_indicators.items():
-            if i < len(indicator_values):
-                indicator_entry = indicator_values[i]
-                indicator_timestamp = indicator_entry.get('timestamp')
-                
-                if ohlc_timestamp != indicator_timestamp:
-                    raise ValueError(
-                        f"Timestamp mismatch from TradingView at index {i}. "
-                        f"OHLC timestamp: {ohlc_timestamp}, {indicator_short} timestamp: {indicator_timestamp}. "
-                        f"Data synchronization error."
-                    )
-        
-        # Convert timestamp to Indian time
         datetime_ist = convert_timestamp_to_indian_time(ohlc_timestamp)
-        
-        # Create base merged entry
+
         merged_entry = {
             "open": ohlc_entry.get('open'),
             "high": ohlc_entry.get('high'),
@@ -143,20 +141,37 @@ def merge_ohlc_with_indicators(data: Dict) -> List[Dict]:
             "index": ohlc_entry.get('index'),
             "datetime_ist": datetime_ist
         }
-        
-        # Add all available indicator values
-        for indicator_short, indicator_values in matched_indicators.items():
-            if i < len(indicator_values):
-                indicator_entry = indicator_values[i]
-                field_mapping = INDICATOR_FIELD_MAPPING[indicator_short]
-                
-                # Add each field for this indicator
-                for index_key, field_name in field_mapping.items():
-                    value = indicator_entry.get(index_key, 0)
-                    merged_entry[field_name] = value
-        
+
+        # For each indicator, look up by timestamp; if not present, try to
+        # find by close nearby offsets (1 or 2 positions) — BUT do not raise
+        # errors. Instead record a warning and continue.
+        for indicator_short, ts_map in indicator_maps.items():
+            indicator_entry = ts_map.get(ohlc_timestamp)
+
+            if indicator_entry is None:
+                # not found at exact timestamp; we won't attempt complex
+                # scanning here. Caller fetch logic ensures extra candles are
+                # included; if missing, just log and continue.
+                errors.append(
+                    f"Indicator '{indicator_short}' missing for OHLC timestamp {ohlc_timestamp} (index {i})"
+                )
+                continue
+
+            field_mapping = INDICATOR_FIELD_MAPPING.get(indicator_short, {})
+            for index_key, field_name in field_mapping.items():
+                value = indicator_entry.get(index_key, 0)
+                merged_entry[field_name] = value
+
         merged_data.append(merged_entry)
-    
+
+    # Optionally attach errors in a way the caller can pick up. We won't
+    # change the return type, but callers that need error details may look
+    # for a top-level '_merge_errors' key on the returned list object via
+    # an attribute. Python lists can't have attributes, so instead we will
+    # append a final dict with a reserved key when there are errors.
+    if errors:
+        merged_data.append({"_merge_errors": errors})
+
     return merged_data
 
 

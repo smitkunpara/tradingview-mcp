@@ -59,9 +59,9 @@ def fetch_historical_data(
             f"Number of candles must be between 1 and 5000. Got: {numb_price_candles}"
         )
     
-    indicator_ids, indicator_versions, errors = validate_indicators(indicators)
-    
-    # Check for validation errors
+    indicator_ids, indicator_versions, errors, warnings = validate_indicators(indicators)
+
+    # If there are fatal validation errors (unrecognized indicators), return
     if errors:
         return {
             'success': False,
@@ -77,41 +77,106 @@ def fetch_historical_data(
             websocket_jwt_token=os.getenv("TRADINGVIEW_JWT_TOKEN")
         )
         
-        # Fetch data from TradingView
-        data = streamer.stream(
-            exchange=exchange,
-            symbol=symbol,
-            timeframe=timeframe,
-            numb_price_candles=numb_price_candles,
-            indicator_id=indicator_ids,
-            indicator_version=indicator_versions
-        )
-        
-        # Convert timestamps to IST
-        if 'ohlc' in data and data['ohlc']:
-            for entry in data['ohlc']:
-                if 'timestamp' in entry:
-                    entry['datetime_ist'] = convert_timestamp_to_indian_time(entry['timestamp'])
-        
-        if 'indicator' in data and data['indicator']:
-            for indicator_name, indicator_data in data['indicator'].items():
-                for entry in indicator_data:
-                    if 'timestamp' in entry:
-                        entry['datetime_ist'] = convert_timestamp_to_indian_time(entry['timestamp'])
-        
-        # Merge OHLC with indicators if available
-        merged_data = merge_ohlc_with_indicators(data)
-        
+        # If no indicators requested, just fetch once and merge
+        if not indicator_ids:
+            data = streamer.stream(
+                exchange=exchange,
+                symbol=symbol,
+                timeframe=timeframe,
+                numb_price_candles=numb_price_candles,
+                indicator_id=[],
+                indicator_version=[]
+            )
+            merged_data = merge_ohlc_with_indicators(data)
+            return {
+                'success': True,
+                'data': merged_data,
+                'errors': errors,
+                'metadata': {
+                    'exchange': exchange,
+                    'symbol': symbol,
+                    'timeframe': timeframe,
+                    'candles_count': len(merged_data),
+                    'indicators': indicators
+                }
+            }
+
+        # Batch indicators into groups of 2 (free account limit)
+        BATCH_SIZE = 2
+        batched_ids = [indicator_ids[i:i+BATCH_SIZE] for i in range(0, len(indicator_ids), BATCH_SIZE)]
+        batched_versions = [indicator_versions[i:i+BATCH_SIZE] for i in range(0, len(indicator_versions), BATCH_SIZE)]
+
+        combined_response = {'ohlc': None, 'indicator': {}}
+        fetch_errors = []
+
+        for batch_index, (batch_ids, batch_versions) in enumerate(zip(batched_ids, batched_versions)):
+            # For subsequent batches, request one extra candle per previous batch
+            extra = batch_index  # 0 for first batch, 1 for second, etc.
+            fetch_candles = numb_price_candles + extra
+
+            # Create a fresh Streamer per batch to avoid socket/state issues
+            try:
+                batch_streamer = Streamer(
+                    export_result=True,
+                    export_type='json',
+                    websocket_jwt_token=os.getenv("TRADINGVIEW_JWT_TOKEN")
+                )
+
+                resp = batch_streamer.stream(
+                    exchange=exchange,
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    numb_price_candles=fetch_candles,
+                    indicator_id=batch_ids,
+                    indicator_version=batch_versions
+                )
+            except Exception as e:
+                # Record error for this batch and continue with next
+                fetch_errors.append(f"Batch {batch_index} failed: {str(e)}")
+                continue
+
+            # Save OHLC from the first response only
+            if combined_response['ohlc'] is None:
+                combined_response['ohlc'] = resp.get('ohlc', [])
+
+            # Merge indicator arrays: append entries for each tradingview key
+            for ind_key, ind_values in (resp.get('indicator') or {}).items():
+                if ind_key not in combined_response['indicator']:
+                    combined_response['indicator'][ind_key] = []
+                # Append new values; allow duplicates — merge function will match by timestamp
+                combined_response['indicator'][ind_key].extend(ind_values or [])
+
+            # Collect any errors returned by the streamer resp
+            if isinstance(resp, dict) and resp.get('errors'):
+                fetch_errors.extend(resp.get('errors'))
+
+        # Ensure we have an ohlc list
+        if not combined_response.get('ohlc'):
+            raise ValueError('Failed to fetch OHLC data from TradingView across batches.')
+
+        # Do not convert timestamps here; merge_ohlc_with_indicators will handle datetime conversion
+        merged_data = merge_ohlc_with_indicators(combined_response)
+
+        # If merge appended a final entry with _merge_errors, extract them
+        merge_errors = []
+        if merged_data and isinstance(merged_data[-1], dict) and '_merge_errors' in merged_data[-1]:
+            merge_errors = merged_data[-1].get('_merge_errors', [])
+            merged_data = merged_data[:-1]
+
+        all_errors = errors + fetch_errors + merge_errors
+
         return {
             'success': True,
             'data': merged_data,
-            'errors': errors,
+            'errors': all_errors,
+            'warnings': warnings,
             'metadata': {
                 'exchange': exchange,
                 'symbol': symbol,
                 'timeframe': timeframe,
                 'candles_count': len(merged_data),
-                'indicators': indicators
+                'indicators': indicators,
+                'batches': len(batched_ids)
             }
         }
         

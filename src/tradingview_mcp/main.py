@@ -51,8 +51,10 @@ def get_historical_data(
         le=5000
     )],
     indicators: Annotated[List[str], Field(
-        description=f"List of technical indicators to include. Options: {', '.join(INDICATOR_MAPPING.keys())}. Example: ['RSI', 'MACD']. Leave empty for no indicators.",
-        max_length=2
+        description=(
+            f"List of technical indicators to include. Options: {', '.join(INDICATOR_MAPPING.keys())}. "
+            "Example: ['RSI', 'MACD', 'CCI', 'BB']. Leave empty for no indicators."
+        )
     )] = []
 ) -> dict:
     """

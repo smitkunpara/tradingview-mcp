@@ -184,7 +184,7 @@ def validate_area(area: str) -> str:
     return area_lower
 
 
-def validate_indicators(indicators: List[str]) -> tuple[List[str], List[str], List[str]]:
+def validate_indicators(indicators: List[str]) -> tuple[List[str], List[str], List[str], List[str]]:
     """
     Validate and map indicators to TradingView IDs.
     
@@ -199,16 +199,20 @@ def validate_indicators(indicators: List[str]) -> tuple[List[str], List[str], Li
     indicator_ids = []
     indicator_versions = []
     errors = []
+    warnings = []
     
-    # Check for free account limitation
-    MAX_INDICATORS = 2
-    if len(indicators) > MAX_INDICATORS:
-        errors.append(
-            f"Too many indicators requested ({len(indicators)}). Free TradingView accounts "
-            f"support maximum {MAX_INDICATORS} indicators per request. "
-            f"Please reduce to {MAX_INDICATORS} or fewer indicators."
+    # Note: free TradingView accounts support only 2 indicators per single
+    # request. The caller (fetch_historical_data) will automatically batch
+    # requests when more than 2 indicators are requested. We therefore do
+    # not fail here; instead include a warning in errors so callers/logs
+    # can surface the behaviour to users if desired.
+    MAX_INDICATORS_PER_REQUEST = 2
+    if len(indicators) > MAX_INDICATORS_PER_REQUEST:
+        warnings.append(
+            f"More than {MAX_INDICATORS_PER_REQUEST} indicators requested ({len(indicators)}). "
+            "The library will fetch indicators in batches of 2 per request to work "
+            "around free account limits."
         )
-        return [], [], errors
     
     for indicator in indicators:
         indicator_upper = indicator.upper()
@@ -221,7 +225,7 @@ def validate_indicators(indicators: List[str]) -> tuple[List[str], List[str], Li
                 f"Indicator '{indicator}' not recognized. Valid indicators: {', '.join(VALID_INDICATORS)}"
             )
     
-    return indicator_ids, indicator_versions, errors
+    return indicator_ids, indicator_versions, errors, warnings
 
 
 def validate_symbol(symbol: Optional[str]) -> str:
