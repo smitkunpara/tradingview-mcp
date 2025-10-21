@@ -10,6 +10,7 @@ from tradingview_scraper.symbols.technicals import Indicators
 from tradingview_scraper.symbols.ideas import Ideas
 from tradingview_screener import Query, col
 import pandas as pd
+import jwt
 import os
 
 from .validators import (
@@ -22,6 +23,24 @@ from .utils import (
     extract_news_body, convert_timestamp_to_indian_time
 )
 
+def is_jwt_token_valid(token: str) -> bool:
+    """
+    Check if the provided JWT token is valid (not expired).
+    
+    Args:
+        token: JWT token string
+    Returns:
+        True if valid, False if expired
+    """
+    try:
+        decoded = jwt.decode(token, options={"verify_signature": False})
+        exp = decoded.get('exp')
+        import time
+        current_time = int(time.time())
+        return exp is not None and exp > current_time
+    except Exception:
+        print ("Error decoding JWT token.")
+        return False
 
 def fetch_historical_data(
     exchange: str,
@@ -71,6 +90,12 @@ def fetch_historical_data(
         }
 
     try:
+        #from  body check the expiry of jwt token if expired raise exception
+        if not os.getenv("TRADINGVIEW_JWT_TOKEN"):
+            raise ValidationError("TRADINGVIEW_JWT_TOKEN is not set in environment variables.")
+        if not is_jwt_token_valid(os.getenv("TRADINGVIEW_JWT_TOKEN")):
+            raise ValidationError("TRADINGVIEW_JWT_TOKEN has expired. Please update it.")
+        
         streamer = Streamer(
             export_result=True,
             export_type='json',
@@ -116,6 +141,11 @@ def fetch_historical_data(
 
             # Create a fresh Streamer per batch to avoid socket/state issues
             try:
+                if not os.getenv("TRADINGVIEW_JWT_TOKEN"):
+                    raise ValidationError("TRADINGVIEW_JWT_TOKEN is not set in environment variables.")
+                if not is_jwt_token_valid(os.getenv("TRADINGVIEW_JWT_TOKEN")):
+                    raise ValidationError("TRADINGVIEW_JWT_TOKEN has expired. Please update it.")
+
                 batch_streamer = Streamer(
                     export_result=True,
                     export_type='json',
