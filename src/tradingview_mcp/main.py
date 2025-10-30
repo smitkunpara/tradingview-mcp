@@ -3,7 +3,7 @@ FastMCP server for TradingView data scraping.
 Provides tools for fetching historical data, news headlines, and news content.
 """
 
-from typing import Annotated, List, Optional, Literal
+from typing import Annotated, List, Optional, Literal, Union
 from pydantic import Field
 from fastmcp import FastMCP
 from dotenv import load_dotenv
@@ -14,8 +14,8 @@ from .tradingview_tools import (
     fetch_news_headlines,
     fetch_news_content,
     fetch_all_indicators,
-    fetch_trading_analysis,
-    fetch_ideas
+    fetch_ideas,
+    process_option_chain_with_analysis
 )
 from .validators import (
     VALID_EXCHANGES, VALID_TIMEFRAMES, VALID_NEWS_PROVIDERS,
@@ -316,94 +316,6 @@ def get_all_indicators(
 
 
 @mcp.tool
-def get_trading_analysis(
-    symbol: Annotated[str, Field(
-        description="Trading symbol/ticker (e.g., 'AAPL', 'NIFTY', 'TSLA'). Required.",
-        min_length=1,
-        max_length=20
-    )],
-    exchange: Annotated[str, Field(
-        description=(
-            "Stock exchange name (e.g., 'NASDAQ', 'NSE', 'NYSE'). Must be one of the valid exchanges. "
-            f"Valid examples: {', '.join(VALID_EXCHANGES[:5])}... Use uppercase format."
-        ),
-        min_length=2,
-        max_length=30
-    )],
-    market: Annotated[Literal['america', 'india', 'crypto', 'forex', 'bond', 'futures'], Field(
-        description="Market region to search in. Options: america, india, crypto, forex, bond, futures"
-    )] = 'america'
-) -> dict:
-    """
-    Get comprehensive trading analysis for a stock including fundamentals, technicals, and sentiment.
-    
-    This tool provides an extensive analysis covering multiple aspects of a stock:
-    - Basic company information (name, sector, industry)
-    - Price and volume data (current prices, trading volume, relative volume)
-    - Performance metrics (1D, 1W, 1M, 3M, 6M, YTD, 1Y, 5Y returns)
-    - Fundamental health (P/E, P/B, debt ratios, profitability metrics)
-    - Dividend information (yield, payout ratio, dividends per share)
-    - Risk and volatility measures (beta, ATR, volatility across timeframes)
-    - Technical indicators (RSI, MACD, Stochastic, ADX, momentum indicators)
-    - Moving averages (SMA and EMA for 10, 20, 50, 100, 200 periods)
-    - Analyst recommendations and technical signal consensus
-    - Company details (employees, shares outstanding)
-    
-    Parameters:
-    - symbol (str): Stock ticker symbol (e.g., 'AAPL' for Apple Inc.)
-    - exchange (str): Exchange where the stock is traded (e.g., 'NASDAQ', 'NSE')
-    - market (str): Market region - 'america' for US stocks, 'india' for Indian stocks, etc.
-    
-    Returns:
-    - success (bool): Whether the analysis was successfully retrieved
-    - data (dict): Organized analysis data with sections for different metric categories
-    - metadata (dict): Information about the request and data quality
-    - message (str): Error description if success is False
-    
-    Example usage:
-    - US stock: get_trading_analysis('AAPL', 'NASDAQ', 'america')
-    - Indian stock: get_trading_analysis('NIFTY', 'NSE', 'india')
-    - Crypto: get_trading_analysis('BTCUSD', 'BINANCE', 'crypto')
-    
-    Note: The function organizes data into logical categories (fundamentals, technicals, 
-    performance, etc.) for easier analysis and decision-making.
-    """
-    try:
-        # Validate parameters explicitly using centralized validators
-        from .validators import validate_exchange, validate_symbol
-        
-        exchange = validate_exchange(exchange)
-        symbol = validate_symbol(symbol)
-        
-        result = fetch_trading_analysis(symbol=symbol, exchange=exchange, market=market)
-        return result
-        
-    except ValidationError as e:
-        return {
-            "success": False,
-            "message": str(e),
-            "data": {},
-            "metadata": {
-                "symbol": symbol,
-                "exchange": exchange,
-                "market": market
-            }
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "message": f"Unexpected error: {str(e)}",
-            "data": {},
-            "metadata": {
-                "symbol": symbol,
-                "exchange": exchange,
-                "market": market,
-                "error_type": type(e).__name__
-            }
-        }
-
-
-@mcp.tool
 def get_ideas(
     symbol: Annotated[str, Field(
         description="Trading symbol/ticker (e.g., 'NIFTY', 'AAPL', 'BTCUSD'). Search online for correct symbol format for your exchange.",
@@ -478,6 +390,188 @@ def get_ideas(
         }
 
 
+@mcp.tool
+def get_option_chain_analysis(
+    symbol: Annotated[str, Field(
+        description="Underlying symbol (e.g., 'NIFTY', 'BANKNIFTY'). Required.",
+        min_length=1,
+        max_length=20
+    )],
+    exchange: Annotated[str, Field(
+        description=(
+            "Stock exchange name (e.g., 'NSE'). Must be one of the valid exchanges. "
+            f"Valid examples: {', '.join(VALID_EXCHANGES[:5])}... Use uppercase format."
+        ),
+        min_length=2,
+        max_length=30
+    )],
+    expiry_date: Annotated[Optional[Union[int, str]], Field(
+        description=(
+            "Option expiry date specification. Three modes supported:\n"
+            "1. None (default): Fetches and groups data for ALL available expiry dates\n"
+            "2. 'latest' (string): Fetches data for the NEAREST upcoming expiry date only\n"
+            "3. Integer (YYYYMMDD format): Fetches data for that specific expiry date (e.g., 20251202, 20251225)\n\n"
+            "Examples:\n"
+            "- expiry_date=None → Returns all expiries grouped\n"
+            "- expiry_date='latest' → Returns only the nearest upcoming expiry\n"
+            "- expiry_date=20251202 → Returns only options expiring on Dec 2, 2025"
+        )
+    )] = None,
+    top_n: Annotated[int, Field(
+        description=(
+            "Number of strikes to return above and below the current spot price (default: 5, max: 100).\n"
+            "For example, if top_n=5:\n"
+            "- Returns 5 ITM (In-The-Money) strikes below spot price\n"
+            "- Returns 5 OTM (Out-of-The-Money) strikes at/above spot price\n"
+            "Total strikes returned: top_n * 2 (one set below, one set above spot)"
+        ),
+        ge=1,
+        le=100
+    )] = 5
+) -> dict:
+    """
+    Get comprehensive option chain analysis with complete Greeks (Delta, Gamma, Theta, Vega, Rho), 
+    Implied Volatility (IV), and detailed strike-by-strike analytics for options trading.
+    
+    This function provides real-time option chain data from TradingView including:
+    
+    **Data Included:**
+    - Current spot price of the underlying instrument
+    - ITM (In-The-Money) strikes: Options below current spot price
+    - OTM (Out-of-The-Money) strikes: Options at or above current spot price
+    - Both CALL and PUT options for each strike
+    
+    **Greeks Provided for Each Option:**
+    - Delta: Measures option price change per $1 move in underlying (range: 0 to 1 for calls, -1 to 0 for puts)
+    - Gamma: Measures rate of change of delta per $1 move in underlying
+    - Theta: Measures time decay - option value loss per day (always negative)
+    - Vega: Measures sensitivity to volatility changes - price change per 1% volatility change
+    - Rho: Measures sensitivity to interest rate changes per 1% rate change
+    
+    **Implied Volatility (IV) Data:**
+    - Overall IV: Market's expectation of future volatility
+    - Bid IV: Implied volatility at bid price
+    - Ask IV: Implied volatility at ask price
+    
+    **Additional Metrics:**
+    - Bid/Ask prices for each option
+    - Theoretical option price (theo_price)
+    - Intrinsic value: In-the-money amount (profit if exercised now)
+    - Time value: Premium paid above intrinsic value
+    - ATM (At-The-Money) strike identification
+    - Aggregate analytics: Total call delta, total put delta, net delta exposure
+    - TradingView symbol for each option (format: NSE:NIFTY251202C25700)
+    
+    **Parameters:**
+    - symbol (str): Underlying instrument symbol (e.g., 'NIFTY', 'BANKNIFTY', 'RELIANCE')
+    - exchange (str): Exchange where options trade (e.g., 'NSE' for National Stock Exchange of India)
+    - expiry_date (None|str|int): 
+        * None → Returns ALL expiry dates grouped together
+        * 'latest' → Returns only the NEAREST upcoming expiry
+        * Integer (YYYYMMDD) → Returns specific expiry (e.g., 20251202 for Dec 2, 2025)
+    - top_n (int): Number of strikes above AND below spot to return (default: 5, max: 100)
+                   Example: top_n=5 returns 5 ITM + 5 OTM = 10 total strikes
+    
+    **Return Structure:**
+    
+    For specific expiry (when expiry_date is integer or 'latest'):
+    ```
+    {
+        'success': True,
+        'spot_price': 25877.85,
+        'expiry': 20251104,
+        'itm_strikes': [  # Strikes below spot
+            {
+                'strike': 25700,
+                'call': {
+                    'symbol': 'NSE:NIFTY251104C25700',
+                    'delta': 0.7547, 'gamma': 0.0002, 'theta': -12.45, 
+                    'vega': 15.32, 'rho': 8.21,
+                    'iv': 0.0834,  # 8.34% implied volatility
+                    'bid_iv': 0.0831, 'ask_iv': 0.0837,
+                    'bid': 175.5, 'ask': 178.0,
+                    'theo_price': 176.75,
+                    'intrinsic_value': 177.85,
+                    'time_value': -1.10
+                },
+                'put': { ... similar structure ... }
+            },
+            ...
+        ],
+        'otm_strikes': [  # Strikes at or above spot
+            { ... same structure as itm_strikes ... }
+        ],
+        'analytics': {
+            'atm_strike': 25900,
+            'total_call_delta': 12.4632,
+            'total_put_delta': -8.2341,
+            'net_delta': 4.2291,
+            'total_strikes': 45
+        }
+    }
+    ```
+    
+    For all expiries (when expiry_date is None):
+    ```
+    {
+        'success': True,
+        'spot_price': 25877.85,
+        'expiries': {
+            20251104: { 'itm_strikes': [...], 'otm_strikes': [...], 'analytics': {...} },
+            20251111: { 'itm_strikes': [...], 'otm_strikes': [...], 'analytics': {...} },
+            ...
+        }
+    }
+    ```
+    
+    **Example Usage:**
+    
+    1. Get latest expiry with 10 strikes in each direction:
+       `get_option_chain_analysis('NIFTY', 'NSE', 'latest', 10)`
+    
+    2. Get specific expiry (December 2, 2025) with 5 strikes:
+       `get_option_chain_analysis('NIFTY', 'NSE', 20251202, 5)`
+    
+    3. Get all available expiries with 3 strikes each:
+       `get_option_chain_analysis('NIFTY', 'NSE', None, 3)`
+    
+    **Use Cases:**
+    - Options trading strategy planning (spreads, straddles, strangles)
+    - Risk assessment using Greeks (delta hedging, gamma scalping)
+    - Volatility analysis and trading
+    - Identifying support/resistance levels via option OI and Greeks
+    - Real-time options pricing and valuation
+    
+    **Note:** This function returns real-time data from TradingView. Greeks and IV are calculated 
+    using standard options pricing models. All monetary values reflect current market conditions.
+    """
+    try:
+        # Validate parameters
+        from .validators import validate_exchange, validate_symbol
+        
+        exchange = validate_exchange(exchange)
+        symbol = validate_symbol(symbol)
+        
+        result = process_option_chain_with_analysis(
+            symbol=symbol,
+            exchange=exchange,
+            expiry_date=expiry_date,
+            top_n=top_n
+        )
+        
+        return result
+        
+    except ValidationError as e:
+        return {
+            "success": False,
+            "message": str(e)
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Unexpected error: {str(e)}"
+        }
+
 
 def main():
     """Run the MCP server."""
@@ -487,7 +581,8 @@ def main():
     print("   - get_news_headlines: Get latest news headlines")
     print("   - get_news_content: Fetch full news articles")
     print("   - get_all_indicators: Get current values for all technical indicators")
-    print("   - get_trading_analysis: Get comprehensive trading analysis (fundamentals, technicals, sentiment)")
+    print("   - get_ideas: Get trading ideas from TradingView community")
+    print("   - get_option_chain_analysis: Get option chain with Greeks, IV, and strike analysis")
     print("\n⚡ Server is ready!")
     mcp.run()
 

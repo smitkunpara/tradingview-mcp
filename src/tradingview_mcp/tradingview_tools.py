@@ -403,247 +403,6 @@ def fetch_all_indicators(
         }
 
 
-def fetch_trading_analysis(
-    symbol: str,
-    exchange: str,
-    market: str = "america"
-) -> Dict[str, Any]:
-    """
-    Fetch comprehensive trading analysis data for a given stock symbol.
-    
-    This function provides a rich set of data points covering fundamental health,
-    technical signals, and overall market sentiment. It returns financial metrics,
-    performance data, volatility indicators, and analyst recommendations.
-    
-    Args:
-        symbol: Stock ticker symbol (e.g., 'AAPL', 'NIFTY')
-        exchange: Exchange name (e.g., 'NASDAQ', 'NSE')
-        market: Market region ('america', 'india', 'crypto', etc.)
-        
-    Returns:
-        Dictionary with:
-        - success: bool indicating if the operation succeeded
-        - data: dict containing comprehensive analysis data when successful
-        - message: error message when unsuccessful
-        - metadata: information about the request
-    
-    Raises:
-        ValidationError: If validation fails for any parameter
-    """
-    # Validate inputs
-    symbol = validate_symbol(symbol)
-    exchange = validate_exchange(exchange) if exchange else None
-    
-    # Validate market
-    valid_markets = ['america', 'india', 'crypto', 'forex', 'bond', 'futures']
-    if market.lower() not in valid_markets:
-        raise ValidationError(
-            f"Invalid market '{market}'. Must be one of: {', '.join(valid_markets)}"
-        )
-    
-    try:
-        # Construct query for the specific market
-        query = Query().set_markets(market.lower())
-        
-        # Select only basic universally supported fields
-        query.select(
-            # Basic Identity
-            'name', 'description', 'close',
-            
-            # Core Price & Volume
-            'open', 'high', 'low', 'volume', 'change', 'change_abs',
-            
-            # Performance
-            'Perf.W', 'Perf.1M', 'Perf.3M', 'Perf.6M', 'Perf.YTD', 'Perf.Y',
-            
-            # Technical Indicators (from indicators feature)
-            'RSI', 'RSI[1]', 'Stoch.K', 'Stoch.D', 'CCI20', 'ADX', 'MACD.macd',
-            'MACD.signal', 'Mom', 'AO', 'UO', 'W.R', 'BBPower',
-            'Ichimoku.BLine', 'VWMA', 'HullMA9',
-            
-            # Moving Averages
-            'SMA10', 'SMA20', 'SMA50', 'SMA100', 'SMA200',
-            'EMA10', 'EMA20', 'EMA50', 'EMA100', 'EMA200',
-            
-            # Recommendations
-            'Recommend.All', 'Recommend.MA', 'Recommend.Other',
-        )
-        
-        # Set specific ticker instead of filtering (more reliable)
-        if exchange:
-            ticker = f"{exchange}:{symbol}"
-            query.set_tickers(ticker)
-        
-        # Fetch the data
-        try:
-            count, df = query.get_scanner_data()
-        except Exception as e:
-            return {
-                'success': False,
-                'message': f'Scanner query failed: {str(e)}',
-                'data': {},
-                'metadata': {
-                    'symbol': symbol,
-                    'exchange': exchange,
-                    'market': market,
-                    'error_type': type(e).__name__
-                }
-            }
-        
-        # Handle empty data
-        df_is_empty = False
-        try:
-            if hasattr(df, 'empty'):  # pandas DataFrame
-                df_is_empty = df.empty
-            elif hasattr(df, '__len__'):  # list or similar
-                df_is_empty = len(df) == 0
-            else:
-                df_is_empty = not df
-        except:
-            df_is_empty = not df
-            
-        if df_is_empty:
-            return {
-                'success': False,
-                'message': f"No data found for symbol '{symbol}' on exchange '{exchange}' in market '{market}'. Please verify the symbol and exchange are correct.",
-                'data': {},
-                'metadata': {
-                    'symbol': symbol,
-                    'exchange': exchange,
-                    'market': market,
-                    'total_count': count,
-                    'dataframe_empty': True
-                }
-            }
-
-        # Convert to dictionary format for better JSON serialization
-        result_data = {}
-        try:
-            # Handle pandas DataFrame
-            if hasattr(df, 'iloc') and hasattr(df, 'columns'):  # DataFrame
-                if len(df) > 0:
-                    # Get first row as dictionary
-                    first_row = df.iloc[0]
-                    result_data = first_row.to_dict()
-            # Handle other data structures
-            elif hasattr(df, '__len__') and len(df) > 0:
-                if hasattr(df, 'columns'):  # Has column info
-                    result_data = dict(zip(df.columns, df.iloc[0] if hasattr(df, 'iloc') else df[0]))
-                else:
-                    # Fallback - just return what we got
-                    result_data = {'raw_data': df}
-        except Exception as e:
-            # Fallback: return error with debug info
-            return {
-                'success': False,
-                'message': f'Data processing error: {str(e)}',
-                'data': {},
-                'debug_info': {
-                    'data_type': str(type(df)),
-                    'data_str': str(df)[:200] if df is not None else 'None',
-                    'count': count,
-                    'has_columns': hasattr(df, 'columns'),
-                    'has_iloc': hasattr(df, 'iloc'),
-                }
-            }        # Clean and organize the data safely
-        def safe_get(data_dict, key, default=None):
-            """Safely get value from dict, handling any data type"""
-            try:
-                return data_dict.get(key, default)
-            except:
-                return default
-        
-        organized_data = {
-            'basic_info': {
-                'name': safe_get(result_data, 'name'),
-                'description': safe_get(result_data, 'description'),
-                'type': safe_get(result_data, 'type'),
-                'exchange': exchange,
-                'market': market,
-            },
-            'price_volume': {
-                'close': safe_get(result_data, 'close'),
-                'open': safe_get(result_data, 'open'),
-                'high': safe_get(result_data, 'high'),
-                'low': safe_get(result_data, 'low'),
-                'volume': safe_get(result_data, 'volume'),
-            },
-            'performance': {
-                'change': safe_get(result_data, 'change'),
-                'change_abs': safe_get(result_data, 'change_abs'),
-                'week_performance': safe_get(result_data, 'Perf.W'),
-                'month_1_performance': safe_get(result_data, 'Perf.1M'),
-                'month_3_performance': safe_get(result_data, 'Perf.3M'),
-                'month_6_performance': safe_get(result_data, 'Perf.6M'),
-                'ytd_performance': safe_get(result_data, 'Perf.YTD'),
-                'year_performance': safe_get(result_data, 'Perf.Y'),
-            },
-            'technical_indicators': {
-                'rsi': safe_get(result_data, 'RSI'),
-                'rsi_previous': safe_get(result_data, 'RSI[1]'),
-                'stoch_k': safe_get(result_data, 'Stoch.K'),
-                'stoch_d': safe_get(result_data, 'Stoch.D'),
-                'cci': safe_get(result_data, 'CCI20'),
-                'adx': safe_get(result_data, 'ADX'),
-                'macd': safe_get(result_data, 'MACD.macd'),
-                'macd_signal': safe_get(result_data, 'MACD.signal'),
-                'momentum': safe_get(result_data, 'Mom'),
-                'awesome_oscillator': safe_get(result_data, 'AO'),
-                'ultimate_oscillator': safe_get(result_data, 'UO'),
-                'williams_r': safe_get(result_data, 'W.R'),
-                'bb_power': safe_get(result_data, 'BBPower'),
-                'ichimoku_base': safe_get(result_data, 'Ichimoku.BLine'),
-                'vwma': safe_get(result_data, 'VWMA'),
-                'hull_ma': safe_get(result_data, 'HullMA9'),
-            },
-            'moving_averages': {
-                'sma_10': safe_get(result_data, 'SMA10'),
-                'sma_20': safe_get(result_data, 'SMA20'),
-                'sma_50': safe_get(result_data, 'SMA50'),
-                'sma_100': safe_get(result_data, 'SMA100'),
-                'sma_200': safe_get(result_data, 'SMA200'),
-                'ema_10': safe_get(result_data, 'EMA10'),
-                'ema_20': safe_get(result_data, 'EMA20'),
-                'ema_50': safe_get(result_data, 'EMA50'),
-                'ema_100': safe_get(result_data, 'EMA100'),
-                'ema_200': safe_get(result_data, 'EMA200'),
-            },
-            'recommendations': {
-                'overall_recommendation': safe_get(result_data, 'Recommend.All'),
-                'ma_recommendation': safe_get(result_data, 'Recommend.MA'),
-                'other_recommendation': safe_get(result_data, 'Recommend.Other'),
-            },
-        }
-        
-        return {
-            'success': True,
-            'data': organized_data,
-            'metadata': {
-                'symbol': symbol,
-                'exchange': exchange,
-                'market': market,
-                'fields_count': len([v for v in result_data.values() if v is not None]),
-                'total_count': count,
-                'df_columns': list(df.columns) if hasattr(df, 'columns') else []
-            }
-        }
-        
-    except Exception as e:
-        import traceback
-        return {
-            'success': False,
-            'message': f'Failed to fetch trading analysis: {str(e)}',
-            'data': {},
-            'metadata': {
-                'symbol': symbol,
-                'exchange': exchange,
-                'market': market,
-                'error_type': type(e).__name__,
-                'traceback': traceback.format_exc()
-            }
-        }
-
-
 def fetch_ideas(
     symbol: str,
     startPage: int = 1,
@@ -707,4 +466,512 @@ def fetch_ideas(
             'ideas': [],
             'count': 0,
             'message': f'Failed to fetch ideas: {str(e)}'
+        }
+
+
+def fetch_option_chain_data(
+    symbol: str,
+    exchange: str,
+    expiry_date: Optional[int] = None
+) -> Dict[str, Any]:
+    """
+    Fetch option chain data with Greeks and IV from TradingView.
+    
+    Args:
+        symbol: Underlying symbol (e.g., 'NIFTY', 'BANKNIFTY')
+        exchange: Exchange name (e.g., 'NSE')
+        expiry_date: Optional expiry date in YYYYMMDD format. If None, fetches all expiries.
+    
+    Returns:
+        Dictionary containing option chain data with Greeks
+    """
+    import requests
+    
+    try:
+        # Request option chain data
+        url = "https://scanner.tradingview.com/options/scan2?label-product=options-overlay"
+        
+        # Build filter - include expiry only if provided
+        filter_conditions = [
+            {"left": "type", "operation": "equal", "right": "option"},
+            {"left": "root", "operation": "equal", "right": symbol}
+        ]
+        
+        if expiry_date is not None:
+            filter_conditions.append(
+                {"left": "expiration", "operation": "equal", "right": expiry_date}
+            )
+        
+        payload = {
+            "columns": [
+                "ask", "bid", "currency", "delta", "expiration", "gamma", 
+                "iv", "option-type", "pricescale", "rho", "root", "strike", 
+                "theoPrice", "theta", "vega", "bid_iv", "ask_iv"
+            ],
+            "filter": filter_conditions,
+            "ignore_unknown_fields": False,
+            "index_filters": [
+                {"name": "underlying_symbol", "values": [f"{exchange}:{symbol}"]}
+            ]
+        }
+        
+        headers = {
+            'Content-Type': 'application/json',
+            'User-Agent': 'Mozilla/5.0'
+        }
+        
+        response = requests.post(url, json=payload, headers=headers, timeout=30)
+        response.raise_for_status()
+        
+        data = response.json()
+        
+        return {
+            'success': True,
+            'data': data,
+            'total_count': data.get('totalCount', 0)
+        }
+        
+    except Exception as e:
+        return {
+            'success': False,
+            'message': f'Failed to fetch option chain: {str(e)}',
+            'data': None
+        }
+
+
+def get_current_spot_price(symbol: str, exchange: str) -> Dict[str, Any]:
+    """
+    Get current spot price of underlying symbol.
+    
+    Args:
+        symbol: Symbol name (e.g., 'NIFTY')
+        exchange: Exchange name (e.g., 'NSE')
+    
+    Returns:
+        Dictionary with spot price and pricescale
+    """
+    import requests
+    
+    try:
+        url = "https://scanner.tradingview.com/global/scan2?label-product=options-overlay"
+        
+        payload = {
+            "columns": ["close", "pricescale"],
+            "ignore_unknown_fields": False,
+            "symbols": {
+                "tickers": [f"{exchange}:{symbol}"]
+            }
+        }
+        
+        headers = {
+            'Content-Type': 'application/json',
+            'User-Agent': 'Mozilla/5.0'
+        }
+        
+        response = requests.post(url, json=payload, headers=headers, timeout=30)
+        response.raise_for_status()
+        
+        data = response.json()
+        
+        if data.get('symbols') and len(data['symbols']) > 0:
+            symbol_data = data['symbols'][0]
+            close_price = symbol_data['f'][0]
+            pricescale = symbol_data['f'][1]
+            
+            return {
+                'success': True,
+                'spot_price': close_price,
+                'pricescale': pricescale
+            }
+        
+        return {
+            'success': False,
+            'message': 'No price data found'
+        }
+        
+    except Exception as e:
+        return {
+            'success': False,
+            'message': f'Failed to fetch spot price: {str(e)}'
+        }
+
+
+def process_option_chain_with_analysis(
+    symbol: str,
+    exchange: str,
+    expiry_date: Optional[str] = None,
+    top_n: int = 5
+) -> Dict[str, Any]:
+    """
+    Fetch and process option chain data with Greeks (Delta, Gamma, Theta, Vega, Rho), Implied Volatility (IV), 
+    and detailed strike analysis for options trading.
+    
+    This function provides comprehensive option chain data including:
+    - Current spot price of the underlying asset
+    - ITM (In-The-Money) strikes: Strikes below the current spot price
+    - OTM (Out-of-The-Money) strikes: Strikes at or above the current spot price
+    - Complete Greeks for both Call and Put options at each strike
+    - Implied Volatility (IV) data: overall IV, bid IV, and ask IV
+    - Intrinsic value and time value calculations
+    - Aggregate analytics: ATM strike, total deltas, net delta exposure
+    
+    Greeks Included:
+    - Delta: Rate of change of option price with respect to underlying price
+    - Gamma: Rate of change of delta with respect to underlying price
+    - Theta: Rate of option price decay with respect to time
+    - Vega: Sensitivity of option price to volatility changes
+    - Rho: Sensitivity of option price to interest rate changes
+    
+    Args:
+        symbol (str): Underlying symbol name (e.g., 'NIFTY', 'BANKNIFTY')
+        exchange (str): Exchange where options are traded (e.g., 'NSE')
+        expiry_date (str|int|None): 
+            - None: Returns data grouped by ALL available expiry dates
+            - "latest": Returns data for the NEAREST upcoming expiry date only
+            - Integer (YYYYMMDD): Returns data for that specific expiry date (e.g., 20251202)
+        top_n (int): Number of strikes to return above and below the spot price. 
+                     Default is 5. Each direction (ITM/OTM) will have top_n strikes.
+    
+    Returns:
+        Dict[str, Any]: Structured dictionary containing:
+        
+        For specific expiry (when expiry_date is an integer or "latest"):
+        {
+            'success': True,
+            'spot_price': float,  # Current spot price of underlying
+            'expiry': int,  # Expiry date in YYYYMMDD format
+            'itm_strikes': [  # Strikes below spot (In-The-Money for Calls)
+                {
+                    'strike': float,
+                    'call': {
+                        'symbol': str,  # TradingView symbol (e.g., 'NSE:NIFTY251202C25700')
+                        'ask': float, 'bid': float,
+                        'delta': float, 'gamma': float, 'theta': float, 'vega': float, 'rho': float,
+                        'iv': float,  # Implied Volatility (overall)
+                        'bid_iv': float, 'ask_iv': float,  # Bid/Ask IV
+                        'theo_price': float,  # Theoretical option price
+                        'intrinsic_value': float, 'time_value': float
+                    },
+                    'put': { ... }  # Same structure as call
+                }
+            ],
+            'otm_strikes': [  # Strikes at or above spot (Out-of-The-Money for Calls)
+                { ... }  # Same structure as itm_strikes
+            ],
+            'analytics': {
+                'atm_strike': float,  # At-The-Money strike (closest to spot)
+                'total_call_delta': float,  # Sum of all call deltas
+                'total_put_delta': float,  # Sum of all put deltas
+                'net_delta': float,  # Net delta exposure (calls + puts)
+                'total_strikes': int  # Total number of strikes available
+            }
+        }
+        
+        For all expiries (when expiry_date is None):
+        {
+            'success': True,
+            'spot_price': float,
+            'expiries': {
+                '20251104': {  # Expiry date as key
+                    'itm_strikes': [...],
+                    'otm_strikes': [...],
+                    'analytics': {...}
+                },
+                '20251202': { ... },
+                ...
+            }
+        }
+        
+        For errors:
+        {
+            'success': False,
+            'message': str  # Error description
+        }
+    
+    Example Usage:
+        # Get latest expiry data with 10 strikes in each direction
+        result = process_option_chain_with_analysis('NIFTY', 'NSE', 'latest', 10)
+        
+        # Get specific expiry
+        result = process_option_chain_with_analysis('NIFTY', 'NSE', 20251202, 5)
+        
+        # Get all expiries
+        result = process_option_chain_with_analysis('NIFTY', 'NSE', None, 5)
+    """
+    try:
+        # Handle negative top_n
+        if top_n < 0:
+            return {
+                'success': False,
+                'message': f"Invalid top_n value: {top_n}. Must be a positive integer."
+            }
+        
+        # Ensure top_n is at least 1
+        if top_n == 0:
+            top_n = 1
+        
+        # Get current spot price
+        spot_result = get_current_spot_price(symbol, exchange)
+        if not spot_result['success']:
+            return {
+                'success': False,
+                'message': f"Failed to fetch spot price: {spot_result.get('message', 'Unknown error')}"
+            }
+        
+        spot_price = spot_result['spot_price']
+        
+        # Determine the actual expiry to fetch
+        fetch_expiry = None
+        is_latest_mode = False
+        
+        if expiry_date is not None:
+            # Check if user wants latest expiry
+            if isinstance(expiry_date, str) and expiry_date.lower() == 'latest':
+                is_latest_mode = True
+                fetch_expiry = None  # Fetch all to find latest
+            else:
+                # Specific expiry provided
+                try:
+                    fetch_expiry = int(expiry_date) if isinstance(expiry_date, str) else expiry_date
+                except ValueError:
+                    return {
+                        'success': False,
+                        'message': f"Invalid expiry_date format: {expiry_date}. Use integer (YYYYMMDD) or 'latest'"
+                    }
+        
+        # Fetch option chain data
+        option_result = fetch_option_chain_data(symbol, exchange, fetch_expiry)
+        if not option_result['success']:
+            return {
+                'success': False,
+                'message': f"Failed to fetch option chain: {option_result.get('message', 'Unknown error')}"
+            }
+        
+        raw_data = option_result['data']
+        fields = raw_data.get('fields', [])
+        symbols_data = raw_data.get('symbols', [])
+        
+        if not symbols_data:
+            return {
+                'success': False,
+                'message': 'No option data available for the specified parameters'
+            }
+        
+        # Group options by expiry and strike
+        expiry_groups = {}
+        
+        for item in symbols_data:
+            symbol_name = item['s']
+            values = item['f']
+            
+            # Map fields to values
+            option_data = {}
+            for i, field in enumerate(fields):
+                option_data[field] = values[i] if i < len(values) else None
+            
+            strike = option_data.get('strike')
+            option_type = option_data.get('option-type')  # 'call' or 'put'
+            expiration = option_data.get('expiration')
+            
+            if strike is None or option_type is None or expiration is None:
+                continue
+            
+            # Initialize expiry group
+            if expiration not in expiry_groups:
+                expiry_groups[expiration] = {}
+            
+            # Initialize strike entry
+            if strike not in expiry_groups[expiration]:
+                expiry_groups[expiration][strike] = {
+                    'strike': strike,
+                    'call': None,
+                    'put': None,
+                    'distance_from_spot': abs(strike - spot_price)
+                }
+            
+            # Calculate intrinsic and time value
+            if option_type == 'call':
+                intrinsic = max(0, spot_price - strike)
+            else:  # put
+                intrinsic = max(0, strike - spot_price)
+            
+            theo_price = option_data.get('theoPrice') if option_data.get('theoPrice') else 0
+            time_value = theo_price - intrinsic
+            
+            # Build option info
+            option_info = {
+                'symbol': symbol_name,
+                'ask': option_data.get('ask'),
+                'bid': option_data.get('bid'),
+                'delta': option_data.get('delta'),
+                'gamma': option_data.get('gamma'),
+                'theta': option_data.get('theta'),
+                'vega': option_data.get('vega'),
+                'rho': option_data.get('rho'),
+                'iv': option_data.get('iv'),
+                'bid_iv': option_data.get('bid_iv'),
+                'ask_iv': option_data.get('ask_iv'),
+                'theo_price': theo_price,
+                'intrinsic_value': round(intrinsic, 2),
+                'time_value': round(time_value, 2)
+            }
+            
+            expiry_groups[expiration][strike][option_type] = option_info
+        
+        # Process each expiry
+        result_by_expiry = {}
+        warnings = []
+        
+        for expiration, strikes_dict in expiry_groups.items():
+            # Sort all strikes
+            all_strikes_by_price = sorted(strikes_dict.values(), key=lambda x: x['strike'])
+            
+            # Find ATM index
+            atm_index = 0
+            for i, strike_data in enumerate(all_strikes_by_price):
+                if strike_data['strike'] >= spot_price:
+                    atm_index = i
+                    break
+            
+            # Get ITM (below spot) and OTM (above spot) strikes
+            available_itm = len(all_strikes_by_price[:atm_index])
+            available_otm = len(all_strikes_by_price[atm_index:])
+            
+            # Determine actual number to return
+            actual_itm = min(top_n, available_itm)
+            actual_otm = min(top_n, available_otm)
+            
+            itm_strikes = all_strikes_by_price[:atm_index][-actual_itm:] if actual_itm > 0 else []
+            otm_strikes = all_strikes_by_price[atm_index:][:actual_otm]
+            
+            # Add warnings if insufficient data
+            if available_itm < top_n:
+                warnings.append(
+                    f"Expiry {expiration}: Requested {top_n} ITM strikes but only {available_itm} available"
+                )
+            
+            if available_otm < top_n:
+                warnings.append(
+                    f"Expiry {expiration}: Requested {top_n} OTM strikes but only {available_otm} available"
+                )
+            
+            # Check if top_n is excessive
+            total_available = available_itm + available_otm
+            if top_n > total_available:
+                warnings.append(
+                    f"Expiry {expiration}: Cannot return {top_n} strikes in each direction. "
+                    f"Total strikes available: {total_available}. Returning all available strikes."
+                )
+            
+            # Calculate aggregate metrics for this expiry
+            total_call_delta = sum(
+                s.get('call', {}).get('delta', 0) or 0 
+                for s in strikes_dict.values() 
+                if s.get('call')
+            )
+            total_put_delta = sum(
+                s.get('put', {}).get('delta', 0) or 0 
+                for s in strikes_dict.values() 
+                if s.get('put')
+            )
+            
+            # Find ATM strike
+            atm_strike = min(strikes_dict.keys(), key=lambda x: abs(x - spot_price))
+            
+            result_by_expiry[expiration] = {
+                'itm_strikes': itm_strikes,
+                'otm_strikes': otm_strikes,
+                'analytics': {
+                    'atm_strike': atm_strike,
+                    'total_call_delta': round(total_call_delta, 4),
+                    'total_put_delta': round(total_put_delta, 4),
+                    'net_delta': round(total_call_delta + total_put_delta, 4),
+                    'total_strikes': len(strikes_dict)
+                }
+            }
+        
+        # Handle "latest" mode - find nearest expiry
+        if is_latest_mode:
+            if not result_by_expiry:
+                return {
+                    'success': False,
+                    'message': 'No option data available to determine latest expiry'
+                }
+            
+            # Get current date in YYYYMMDD format
+            from datetime import datetime
+            current_date = int(datetime.now().strftime('%Y%m%d'))
+            
+            # Find the nearest expiry that is >= current date
+            available_expiries = sorted(result_by_expiry.keys())
+            nearest_expiry = None
+            
+            for exp in available_expiries:
+                if exp >= current_date:
+                    nearest_expiry = exp
+                    break
+            
+            # If no future expiry found, use the last available (edge case)
+            if nearest_expiry is None:
+                nearest_expiry = available_expiries[-1] if available_expiries else None
+            
+            if nearest_expiry is None:
+                return {
+                    'success': False,
+                    'message': 'No valid expiry found'
+                }
+            
+            # Return only the nearest expiry data
+            expiry_result = result_by_expiry[nearest_expiry]
+            result = {
+                'success': True,
+                'spot_price': spot_price,
+                'expiry': nearest_expiry,
+                'itm_strikes': expiry_result['itm_strikes'],
+                'otm_strikes': expiry_result['otm_strikes'],
+                'analytics': expiry_result['analytics']
+            }
+            
+            # Add warnings if any
+            if warnings:
+                result['warnings'] = [w for w in warnings if f"Expiry {nearest_expiry}" in w]
+            
+            return result
+        
+        # Build final result for non-latest modes
+        if fetch_expiry is not None:
+            # Single expiry requested
+            if fetch_expiry in result_by_expiry:
+                expiry_result = result_by_expiry[fetch_expiry]
+                result = {
+                    'success': True,
+                    'spot_price': spot_price,
+                    'expiry': fetch_expiry,
+                    'itm_strikes': expiry_result['itm_strikes'],
+                    'otm_strikes': expiry_result['otm_strikes'],
+                    'analytics': expiry_result['analytics']
+                }
+            else:
+                return {
+                    'success': False,
+                    'message': f'No option data found for expiry {fetch_expiry}'
+                }
+        else:
+            # All expiries
+            result = {
+                'success': True,
+                'spot_price': spot_price,
+                'expiries': result_by_expiry
+            }
+        
+        # Add warnings if any
+        if warnings:
+            result['warnings'] = warnings
+        
+        return result
+        
+    except Exception as e:
+        return {
+            'success': False,
+            'message': f'Failed to process option chain: {str(e)}'
         }
