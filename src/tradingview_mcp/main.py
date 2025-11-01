@@ -287,8 +287,8 @@ def get_all_indicators(
     Example
     - get_all_indicators('NIFTY', 'NSE', '1m')
 
-    Note: The underlying scraper may require a TRADINGVIEW_JWT_TOKEN environment
-    variable to be set for private API access. If missing you may receive errors.
+    Note: The underlying scraper requires TRADINGVIEW_COOKIE environment variable 
+    to be set for authentication. JWT tokens are automatically generated from cookies.
     """
     try:
         # Validate parameters explicitly using centralized validators so errors are
@@ -360,7 +360,8 @@ def get_ideas(
     Note :
     - to avoid extra time for sraping recomanded 1-3 page for latest and popular ideas.
 
-    Note: The function may require a TRADINGVIEW_JWT_TOKEN environment variable to be set for private API access.
+    Note: The function requires TRADINGVIEW_COOKIE environment variable to be set 
+    for authentication. JWT tokens are automatically generated from cookies as needed.
     """
     try:
         # Validate parameters explicitly using centralized validators

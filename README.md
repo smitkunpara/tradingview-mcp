@@ -52,10 +52,26 @@ Fetch full news article content.
 
 ## Configuration
 
-set your TradingView JWT token in `.env`:
+Set your TradingView cookies in `.env`:
+```bash
+# Required: Your TradingView session cookies
+TRADINGVIEW_COOKIE="your_cookies_here"
+
+# Optional: TradingView configuration (defaults will be used if not set)
+TRADINGVIEW_URL="https://in.tradingview.com/chart/0M7cMdwj/?symbol=NSE%3ANIFTY"
+TRADINGVIEW_HOST="in.tradingview.com"
+TRADINGVIEW_USER_AGENT="Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0"
 ```
-TRADINGVIEW_JWT_TOKEN=your_token_here
-```
+
+### How to get your TradingView cookies:
+1. Open TradingView in your browser and log in
+2. Open Developer Tools (F12)
+3. Go to the Network tab
+4. Refresh the page
+5. Click on any request to tradingview.com
+6. Copy the entire Cookie header value
+
+**Note:** The server will automatically generate fresh JWT tokens from your cookies as needed. Tokens are cached and reused until they expire, ensuring optimal performance.
 
 ## Error Handling
 

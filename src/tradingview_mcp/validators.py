@@ -62,6 +62,7 @@ INDICATOR_MAPPING = {
     "MACD": ("STD;MACD", "38.0"),
     "CCI": ("STD;CCI", "37.0"),
     "BB": ("STD;Bollinger_Bands", "32.0"),
+    # "OI": ("STD;Open%Interest","7.0")
 }
 
 # === INDICATOR FIELD MAPPING ===

@@ -3,7 +3,7 @@ TradingView tools implementation for MCP server.
 """
 
 import json
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Tuple
 from tradingview_scraper.symbols.stream import Streamer
 from tradingview_scraper.symbols.news import NewsScraper
 from tradingview_scraper.symbols.technicals import Indicators
@@ -12,6 +12,9 @@ from tradingview_screener import Query, col
 import pandas as pd
 import jwt
 import os
+import time
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from .validators import (
     validate_exchange, validate_timeframe, validate_news_provider,
@@ -22,6 +25,64 @@ from .utils import (
     merge_ohlc_with_indicators, clean_for_json,
     extract_news_body, convert_timestamp_to_indian_time
 )
+from .auth import extract_jwt_token, get_token_info
+
+
+# Global token cache with thread lock
+_token_cache = {
+    'token': None,
+    'expiry': 0
+}
+_token_lock = threading.Lock()
+
+
+def get_valid_jwt_token(force_refresh: bool = False) -> str:
+    """
+    Get a valid JWT token, reusing cached token if not expired.
+    
+    Args:
+        force_refresh: Force token refresh even if cached token is valid
+        
+    Returns:
+        Valid JWT token string
+        
+    Raises:
+        ValueError: If unable to generate token
+    """
+    global _token_cache
+    
+    with _token_lock:
+        current_time = int(time.time())
+        
+        # Check if cached token is still valid (with 60 second buffer)
+        if not force_refresh and _token_cache['token'] and _token_cache['expiry'] > (current_time + 60):
+            return _token_cache['token']
+        
+        # Generate new token
+        try:
+            token = extract_jwt_token()
+            if not token:
+                raise ValueError("Failed to extract JWT token")
+            
+            # Get token expiry
+            token_info = get_token_info(token)
+            if not token_info.get('valid'):
+                raise ValueError(f"Invalid token: {token_info.get('error', 'Unknown error')}")
+            
+            # Cache the token
+            _token_cache['token'] = token
+            _token_cache['expiry'] = token_info.get('exp', current_time + 3600)  # Default 1 hour if no exp
+            
+            return token
+            
+        except ValueError:
+            # Re-raise with original message
+            raise
+        except Exception as e:
+            raise ValueError(
+                f"Token is not generated with cookies. Please verify your cookies. Error: {str(e)}"
+            )
+
 
 def is_jwt_token_valid(token: str) -> bool:
     """
@@ -35,11 +96,10 @@ def is_jwt_token_valid(token: str) -> bool:
     try:
         decoded = jwt.decode(token, options={"verify_signature": False})
         exp = decoded.get('exp')
-        import time
         current_time = int(time.time())
         return exp is not None and exp > current_time
     except Exception:
-        print ("Error decoding JWT token.")
+        print("Error decoding JWT token.")
         return False
 
 def fetch_historical_data(
@@ -50,7 +110,7 @@ def fetch_historical_data(
     indicators: List[str]
 ) -> Dict[str, Any]:
     """
-    Fetch historical data from TradingView with indicators.
+    Fetch historical data from TradingView with indicators using threading.
     
     Note: Free TradingView accounts are limited to maximum 2 indicators per request.
     
@@ -90,20 +150,27 @@ def fetch_historical_data(
         }
 
     try:
-        #from  body check the expiry of jwt token if expired raise exception
-        if not os.getenv("TRADINGVIEW_JWT_TOKEN"):
-            raise ValidationError("TRADINGVIEW_JWT_TOKEN is not set in environment variables.")
-        if not is_jwt_token_valid(os.getenv("TRADINGVIEW_JWT_TOKEN")):
-            raise ValidationError("TRADINGVIEW_JWT_TOKEN has expired. Please update it.")
+        # Check if cookies are set
+        if not os.getenv("TRADINGVIEW_COOKIE"):
+            raise ValidationError(
+                "Account is not connected with MCP. Please set TRADINGVIEW_COOKIE "
+                "environment variable to connect your account."
+            )
         
-        streamer = Streamer(
-            export_result=True,
-            export_type='json',
-            websocket_jwt_token=os.getenv("TRADINGVIEW_JWT_TOKEN")
-        )
+        # Get valid JWT token
+        try:
+            jwt_token = get_valid_jwt_token()
+        except ValueError as e:
+            raise ValidationError(str(e))
         
-        # If no indicators requested, just fetch once and merge
+        # If no indicators requested, just fetch once
         if not indicator_ids:
+            streamer = Streamer(
+                export_result=True,
+                export_type='json',
+                websocket_jwt_token=jwt_token
+            )
+            
             data = streamer.stream(
                 exchange=exchange,
                 symbol=symbol,
@@ -133,23 +200,30 @@ def fetch_historical_data(
 
         combined_response = {'ohlc': None, 'indicator': {}}
         fetch_errors = []
-
-        for batch_index, (batch_ids, batch_versions) in enumerate(zip(batched_ids, batched_versions)):
-            # For subsequent batches, request one extra candle per previous batch
-            extra = batch_index  # 0 for first batch, 1 for second, etc.
-            fetch_candles = numb_price_candles + extra
-
-            # Create a fresh Streamer per batch to avoid socket/state issues
+        
+        def fetch_batch(batch_index: int, batch_ids: List[str], batch_versions: List[int]) -> Tuple[int, Dict, Optional[str]]:
+            """
+            Fetch a single batch of indicators in a thread.
+            
+            Returns:
+                Tuple of (batch_index, response_data, error_message)
+            """
             try:
-                if not os.getenv("TRADINGVIEW_JWT_TOKEN"):
-                    raise ValidationError("TRADINGVIEW_JWT_TOKEN is not set in environment variables.")
-                if not is_jwt_token_valid(os.getenv("TRADINGVIEW_JWT_TOKEN")):
-                    raise ValidationError("TRADINGVIEW_JWT_TOKEN has expired. Please update it.")
-
+                # For subsequent batches, request one extra candle per previous batch
+                extra = batch_index  # 0 for first batch, 1 for second, etc.
+                fetch_candles = numb_price_candles + extra
+                
+                # Generate fresh token for this batch
+                try:
+                    batch_token = get_valid_jwt_token()
+                except ValueError as e:
+                    return (batch_index, None, f"Token generation failed: {str(e)}")
+                
+                # Create a fresh Streamer per batch
                 batch_streamer = Streamer(
                     export_result=True,
                     export_type='json',
-                    websocket_jwt_token=os.getenv("TRADINGVIEW_JWT_TOKEN")
+                    websocket_jwt_token=batch_token
                 )
 
                 resp = batch_streamer.stream(
@@ -160,11 +234,35 @@ def fetch_historical_data(
                     indicator_id=batch_ids,
                     indicator_version=batch_versions
                 )
+                
+                return (batch_index, resp, None)
+                
             except Exception as e:
-                # Record error for this batch and continue with next
-                fetch_errors.append(f"Batch {batch_index} failed: {str(e)}")
-                continue
+                return (batch_index, None, f"Batch {batch_index} failed: {str(e)}")
+        
+        # Use ThreadPoolExecutor to fetch batches in parallel
+        with ThreadPoolExecutor(max_workers=len(batched_ids)) as executor:
+            # Submit all batch fetch tasks
+            future_to_batch = {
+                executor.submit(fetch_batch, idx, batch_ids, batch_versions): idx
+                for idx, (batch_ids, batch_versions) in enumerate(zip(batched_ids, batched_versions))
+            }
+            
+            # Collect results as they complete
+            batch_results = {}
+            for future in as_completed(future_to_batch):
+                batch_index, resp, error = future.result()
+                
+                if error:
+                    fetch_errors.append(error)
+                    continue
+                
+                batch_results[batch_index] = resp
 
+        # Process results in order
+        for batch_index in sorted(batch_results.keys()):
+            resp = batch_results[batch_index]
+            
             # Save OHLC from the first response only
             if combined_response['ohlc'] is None:
                 combined_response['ohlc'] = resp.get('ohlc', [])
