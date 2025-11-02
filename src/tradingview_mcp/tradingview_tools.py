@@ -133,6 +133,14 @@ def fetch_historical_data(
     symbol = validate_symbol(symbol)
     timeframe = validate_timeframe(timeframe)
     
+    # Convert string to int if necessary
+    try:
+        numb_price_candles = int(numb_price_candles)
+    except (ValueError, TypeError):
+        raise ValidationError(
+            f"Number of candles must be a valid integer or string that can be converted to integer. Got: {numb_price_candles}"
+        )
+
     if numb_price_candles < 1 or numb_price_candles > 5000:
         raise ValidationError(
             f"Number of candles must be between 1 and 5000. Got: {numb_price_candles}"
@@ -529,6 +537,21 @@ def fetch_ideas(
     # Validate inputs
     symbol = validate_symbol(symbol)
 
+    # Convert string to int if necessary for startPage and endPage
+    try:
+        startPage = int(startPage)
+    except (ValueError, TypeError):
+        raise ValidationError(
+            f"startPage must be a valid integer or string that can be converted to integer. Got: {startPage}"
+        )
+
+    try:
+        endPage = int(endPage)
+    except (ValueError, TypeError):
+        raise ValidationError(
+            f"endPage must be a valid integer or string that can be converted to integer. Got: {endPage}"
+        )
+
     if endPage < startPage:
         raise ValidationError("endPage must be greater than or equal to startPage.")
 
@@ -797,13 +820,22 @@ def process_option_chain_with_analysis(
         result = process_option_chain_with_analysis('NIFTY', 'NSE', None, 5)
     """
     try:
+        # Convert string to int if necessary for top_n
+        try:
+            top_n = int(top_n)
+        except (ValueError, TypeError):
+            return {
+                'success': False,
+                'message': f"top_n must be a valid integer or string that can be converted to integer. Got: {top_n}"
+            }
+
         # Handle negative top_n
         if top_n < 0:
             return {
                 'success': False,
                 'message': f"Invalid top_n value: {top_n}. Must be a positive integer."
             }
-        
+
         # Ensure top_n is at least 1
         if top_n == 0:
             top_n = 1

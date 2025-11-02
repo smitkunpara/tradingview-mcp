@@ -45,8 +45,8 @@ def get_historical_data(
     timeframe: Annotated[Literal['1m', '5m', '15m', '30m', '1h', '2h', '4h', '1d', '1w', '1M'], Field(
         description="Time interval for each candle. Options: 1m (1 minute), 5m, 15m, 30m, 1h (1 hour), 2h, 4h, 1d (1 day), 1w (1 week), 1M (1 month)"
     )],
-    numb_price_candles: Annotated[int, Field(
-        description="Number of historical candles to fetch (1-5000). More candles = longer history. E.g., 100 for last 100 periods.",
+    numb_price_candles: Annotated[Union[int, str], Field(
+        description="Number of historical candles to fetch (1-5000). Accepts int or str (e.g., 100 or '100'). More candles = longer history. E.g., 100 for last 100 periods.",
         ge=1,
         le=5000
     )],
@@ -84,6 +84,11 @@ def get_historical_data(
             numb_price_candles=numb_price_candles,
             indicators=indicators
         )
+        #create export directory if not exists
+        import os
+        if not os.path.exists("/home/smitkunpara/Desktop/Trading bot/export"):
+            os.makedirs("/home/smitkunpara/Desktop/Trading bot/export")
+            
         #export result in the the export/<timstamp>_<symbol>_<timeframe>.json
         try:
             timestamp = result.get("data", {})[0].get("datetime_ist")
@@ -322,13 +327,13 @@ def get_ideas(
         min_length=1,
         max_length=20
     )],
-    startPage: Annotated[int, Field(
-        description="Starting page number for scraping ideas",
+    startPage: Annotated[Union[int, str], Field(
+        description="Starting page number for scraping ideas. Accepts int or str (e.g., 1 or '1').",
         ge=1,
         le=10
     )] = 1,
-    endPage: Annotated[int, Field(
-        description="Ending page number for scraping ideas",
+    endPage: Annotated[Union[int, str], Field(
+        description="Ending page number for scraping ideas. Accepts int or str (e.g., 1 or '1').",
         ge=1,
         le=10
     )] = 1,
@@ -418,9 +423,9 @@ def get_option_chain_analysis(
             "- expiry_date=20251202 → Returns only options expiring on Dec 2, 2025"
         )
     )] = None,
-    top_n: Annotated[int, Field(
+    top_n: Annotated[Union[int, str], Field(
         description=(
-            "Number of strikes to return above and below the current spot price (default: 5, max: 100).\n"
+            "Number of strikes to return above and below the current spot price (default: 5, max: 100). Accepts int or str (e.g., 5 or '5').\n"
             "For example, if top_n=5:\n"
             "- Returns 5 ITM (In-The-Money) strikes below spot price\n"
             "- Returns 5 OTM (Out-of-The-Money) strikes at/above spot price\n"
