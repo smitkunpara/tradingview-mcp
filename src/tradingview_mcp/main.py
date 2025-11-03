@@ -8,6 +8,7 @@ from pydantic import Field
 from fastmcp import FastMCP
 from dotenv import load_dotenv
 import json
+from toon import encode as toon_encode
 
 from .tradingview_tools import (
     fetch_historical_data,
@@ -56,7 +57,7 @@ def get_historical_data(
             "Example: ['RSI', 'MACD', 'CCI', 'BB']. Leave empty for no indicators."
         )
     )] = []
-) -> dict:
+) -> str:
     """
     Fetch historical OHLCV data with technical indicators from TradingView.
     
@@ -98,8 +99,11 @@ def get_historical_data(
 
         with open(filename, 'w') as f:
             json.dump(result, f, indent=4)
-        
-        return {"file_path":filename , "data" : result}
+
+        # Encode the data in TOON format for token efficiency
+        toon_data = toon_encode(result)
+
+        return toon_data
     
     except ValidationError as e:
         return {
@@ -137,7 +141,7 @@ def get_news_headlines(
     area: Annotated[Literal['world', 'americas', 'europe', 'asia', 'oceania', 'africa'], Field(
         description="Geographical area filter for news. Default is 'asia'."
     )] = 'asia'
-) -> list:
+) -> str:
     """
     Scrape latest news headlines from TradingView for a specific symbol.
     
@@ -169,14 +173,12 @@ def get_news_headlines(
         )
         
         if not headlines:
-            return {
-                "success": True,
-                "message": f"No news found for symbol '{symbol}'",
-                "headlines": [],
-                "count": 0
-            }
-        
-        return headlines
+            return "headlines[0]:"
+
+        # Encode headlines in TOON format for token efficiency
+        toon_data = toon_encode({"headlines": headlines})
+
+        return toon_data
         
     except ValidationError as e:
         return {
@@ -203,7 +205,7 @@ def get_news_content(
         min_length=1,
         max_length=20
     )]
-) -> list:
+) -> str:
     """
     Fetch full news article content using story paths from headlines.
     
@@ -229,10 +231,10 @@ def get_news_content(
     try:
         articles = fetch_news_content(story_paths)
         
-        successful = [a for a in articles if a.get("success", False)]
-        failed = [a for a in articles if not a.get("success", False)]
-        
-        return articles
+        # Encode articles in TOON format for token efficiency
+        toon_data = toon_encode({"articles": articles})
+
+        return toon_data
         
     except ValidationError as e:
         return {
@@ -271,7 +273,7 @@ def get_all_indicators(
             f"{', '.join(VALID_TIMEFRAMES)}"
         )
     )] = '1m'
-) -> dict:
+) -> str:
     """
     Return current values for all available technical indicators for a symbol.
 
@@ -305,7 +307,11 @@ def get_all_indicators(
         timeframe = validate_timeframe(timeframe)
 
         result = fetch_all_indicators(exchange=exchange, symbol=symbol, timeframe=timeframe)
-        return result
+
+        # Encode indicators in TOON format for token efficiency
+        toon_data = toon_encode(result)
+
+        return toon_data
     except ValidationError as e:
         return {
             "success": False,
@@ -340,7 +346,7 @@ def get_ideas(
     sort: Annotated[Literal['popular', 'recent'], Field(
         description="Sorting order for ideas. 'popular' for most liked, 'recent' for latest."
     )] = 'popular'
-) -> dict:
+) -> str:
     """
     Scrape trading ideas from TradingView for a specific symbol.
 
@@ -379,7 +385,10 @@ def get_ideas(
             sort=sort
         )
 
-        return result
+        # Encode ideas in TOON format for token efficiency
+        toon_data = toon_encode(result)
+
+        return toon_data
     except ValidationError as e:
         return {
             "success": False,
@@ -434,7 +443,7 @@ def get_option_chain_analysis(
         ge=1,
         le=100
     )] = 5
-) -> dict:
+) -> str:
     """
     Get comprehensive option chain analysis with complete Greeks (Delta, Gamma, Theta, Vega, Rho), 
     Implied Volatility (IV), and detailed strike-by-strike analytics for options trading.
@@ -564,8 +573,12 @@ def get_option_chain_analysis(
             expiry_date=expiry_date,
             top_n=top_n
         )
-        
-        return result
+        with open("debug_result.json", 'w') as f:
+            json.dump(result, f, indent=4)
+        # Encode option chain data in TOON format for token efficiency
+        toon_data = toon_encode(result)
+
+        return toon_data
         
     except ValidationError as e:
         return {

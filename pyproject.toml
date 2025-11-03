@@ -20,6 +20,7 @@ dependencies = [
     "py-vollib-vectorized>=0.1.1",
     "requests>=2.32.5",
     "python-dotenv>=1.0.0",
+    "python-toon @ git+https://github.com/xaviviro/python-toon.git",
 ]
 
 [build-system]
@@ -34,3 +35,4 @@ dev-dependencies = []
 
 [tool.uv.sources]
 tradingview-scraper = { git = "https://github.com/smitkunpara/tradingview-scraper.git" }
+python-toon = { git = "https://github.com/xaviviro/python-toon.git" }

@@ -736,7 +736,7 @@ def process_option_chain_with_analysis(
     exchange: str,
     expiry_date: Optional[str] = None,
     top_n: int = 5
-) -> Dict[str, Any]:
+) -> List[Dict[str, Any]]:
     """
     Fetch and process option chain data with Greeks (Delta, Gamma, Theta, Vega, Rho), Implied Volatility (IV), 
     and detailed strike analysis for options trading.
@@ -962,43 +962,43 @@ def process_option_chain_with_analysis(
             
             expiry_groups[expiration][strike][option_type] = option_info
         
-        # Process each expiry
-        result_by_expiry = {}
+        # Process each expiry and create flat array
+        flat_options = []
         warnings = []
-        
+
         for expiration, strikes_dict in expiry_groups.items():
             # Sort all strikes
             all_strikes_by_price = sorted(strikes_dict.values(), key=lambda x: x['strike'])
-            
+
             # Find ATM index
             atm_index = 0
             for i, strike_data in enumerate(all_strikes_by_price):
                 if strike_data['strike'] >= spot_price:
                     atm_index = i
                     break
-            
+
             # Get ITM (below spot) and OTM (above spot) strikes
             available_itm = len(all_strikes_by_price[:atm_index])
             available_otm = len(all_strikes_by_price[atm_index:])
-            
+
             # Determine actual number to return
             actual_itm = min(top_n, available_itm)
             actual_otm = min(top_n, available_otm)
-            
+
             itm_strikes = all_strikes_by_price[:atm_index][-actual_itm:] if actual_itm > 0 else []
             otm_strikes = all_strikes_by_price[atm_index:][:actual_otm]
-            
+
             # Add warnings if insufficient data
             if available_itm < top_n:
                 warnings.append(
                     f"Expiry {expiration}: Requested {top_n} ITM strikes but only {available_itm} available"
                 )
-            
+
             if available_otm < top_n:
                 warnings.append(
                     f"Expiry {expiration}: Requested {top_n} OTM strikes but only {available_otm} available"
                 )
-            
+
             # Check if top_n is excessive
             total_available = available_itm + available_otm
             if top_n > total_available:
@@ -1006,116 +1006,130 @@ def process_option_chain_with_analysis(
                     f"Expiry {expiration}: Cannot return {top_n} strikes in each direction. "
                     f"Total strikes available: {total_available}. Returning all available strikes."
                 )
-            
-            # Calculate aggregate metrics for this expiry
-            total_call_delta = sum(
-                s.get('call', {}).get('delta', 0) or 0 
-                for s in strikes_dict.values() 
-                if s.get('call')
-            )
-            total_put_delta = sum(
-                s.get('put', {}).get('delta', 0) or 0 
-                for s in strikes_dict.values() 
-                if s.get('put')
-            )
-            
-            # Find ATM strike
-            atm_strike = min(strikes_dict.keys(), key=lambda x: abs(x - spot_price))
-            
-            result_by_expiry[expiration] = {
-                'itm_strikes': itm_strikes,
-                'otm_strikes': otm_strikes,
-                'analytics': {
-                    'atm_strike': atm_strike,
-                    'total_call_delta': round(total_call_delta, 4),
-                    'total_put_delta': round(total_put_delta, 4),
-                    'net_delta': round(total_call_delta + total_put_delta, 4),
-                    'total_strikes': len(strikes_dict)
-                }
-            }
+
+            # Create flat array for this expiry
+            for strike_data in itm_strikes + otm_strikes:
+                strike = strike_data['strike']
+                distance_from_spot = strike_data['distance_from_spot']
+
+                # Add call option if exists
+                if strike_data.get('call'):
+                    call_option = strike_data['call'].copy()
+                    call_option.update({
+                        'option': 'call',
+                        'strike_price': strike,
+                        'distance_from_spot': distance_from_spot
+                    })
+                    flat_options.append(call_option)
+
+                # Add put option if exists
+                if strike_data.get('put'):
+                    put_option = strike_data['put'].copy()
+                    put_option.update({
+                        'option': 'put',
+                        'strike_price': strike,
+                        'distance_from_spot': distance_from_spot
+                    })
+                    flat_options.append(put_option)
         
-        # Handle "latest" mode - find nearest expiry
-        if is_latest_mode:
-            if not result_by_expiry:
-                return {
-                    'success': False,
-                    'message': 'No option data available to determine latest expiry'
-                }
-            
-            # Get current date in YYYYMMDD format
-            from datetime import datetime
-            current_date = int(datetime.now().strftime('%Y%m%d'))
-            
-            # Find the nearest expiry that is >= current date
-            available_expiries = sorted(result_by_expiry.keys())
-            nearest_expiry = None
-            
-            for exp in available_expiries:
-                if exp >= current_date:
-                    nearest_expiry = exp
-                    break
-            
-            # If no future expiry found, use the last available (edge case)
-            if nearest_expiry is None:
-                nearest_expiry = available_expiries[-1] if available_expiries else None
-            
-            if nearest_expiry is None:
-                return {
-                    'success': False,
-                    'message': 'No valid expiry found'
-                }
-            
-            # Return only the nearest expiry data
-            expiry_result = result_by_expiry[nearest_expiry]
-            result = {
-                'success': True,
-                'spot_price': spot_price,
-                'expiry': nearest_expiry,
-                'itm_strikes': expiry_result['itm_strikes'],
-                'otm_strikes': expiry_result['otm_strikes'],
-                'analytics': expiry_result['analytics']
-            }
-            
-            # Add warnings if any
-            if warnings:
-                result['warnings'] = [w for w in warnings if f"Expiry {nearest_expiry}" in w]
-            
-            return result
-        
-        # Build final result for non-latest modes
-        if fetch_expiry is not None:
-            # Single expiry requested
-            if fetch_expiry in result_by_expiry:
-                expiry_result = result_by_expiry[fetch_expiry]
-                result = {
-                    'success': True,
-                    'spot_price': spot_price,
-                    'expiry': fetch_expiry,
-                    'itm_strikes': expiry_result['itm_strikes'],
-                    'otm_strikes': expiry_result['otm_strikes'],
-                    'analytics': expiry_result['analytics']
-                }
+        # Filter options based on expiry_date parameter
+        if expiry_date is not None:
+            if isinstance(expiry_date, str) and expiry_date.lower() == 'latest':
+                # Find latest expiry
+                from datetime import datetime
+                current_date = int(datetime.now().strftime('%Y%m%d'))
+                available_expiries = []
+                for opt in flat_options:
+                    symbol = opt.get('symbol', '')
+                    if 'C' in symbol:
+                        expiry_part = symbol.split('C')[0][-8:]
+                    elif 'P' in symbol:
+                        expiry_part = symbol.split('P')[0][-8:]
+                    else:
+                        continue
+                    try:
+                        exp_date = int(expiry_part)
+                        if exp_date not in available_expiries:
+                            available_expiries.append(exp_date)
+                    except ValueError:
+                        # Skip invalid expiry dates
+                        continue
+
+                available_expiries.sort()
+                latest_expiry = None
+                for exp in available_expiries:
+                    if exp >= current_date:
+                        latest_expiry = exp
+                        break
+                if latest_expiry is None and available_expiries:
+                    latest_expiry = available_expiries[-1]
+
+                # Filter for latest expiry
+                if latest_expiry is not None:
+                    flat_options = [opt for opt in flat_options if str(latest_expiry) in opt.get('symbol', '')]
             else:
-                return {
-                    'success': False,
-                    'message': f'No option data found for expiry {fetch_expiry}'
-                }
-        else:
-            # All expiries
-            result = {
-                'success': True,
-                'spot_price': spot_price,
-                'expiries': result_by_expiry
+                # Specific expiry
+                try:
+                    target_expiry = str(int(expiry_date)) if isinstance(expiry_date, str) else str(expiry_date)
+                    flat_options = [opt for opt in flat_options if target_expiry in opt.get('symbol', '')]
+                except ValueError:
+                    return [{'success': False, 'message': f'Invalid expiry_date format: {expiry_date}'}]
+
+        # Calculate analytics for the latest expiry (or all data if no specific expiry)
+        analytics = {}
+        if flat_options:
+            # Find the latest expiry from the data
+            expiries = set()
+            for opt in flat_options:
+                symbol = opt.get('symbol', '')
+                if 'C' in symbol:
+                    expiry_part = symbol.split('C')[0][-8:]
+                elif 'P' in symbol:
+                    expiry_part = symbol.split('P')[0][-8:]
+                else:
+                    continue
+                try:
+                    exp_date = int(expiry_part)
+                    expiries.add(exp_date)
+                except ValueError:
+                    continue
+
+            latest_expiry = max(expiries) if expiries else None
+
+            # Calculate analytics for latest expiry
+            latest_expiry_options = [opt for opt in flat_options if str(latest_expiry) in opt.get('symbol', '')]
+
+            total_call_delta = sum(opt.get('delta', 0) for opt in latest_expiry_options if opt.get('option') == 'call')
+            total_put_delta = sum(opt.get('delta', 0) for opt in latest_expiry_options if opt.get('option') == 'put')
+
+            # Find ATM strike (closest to spot price)
+            if latest_expiry_options:
+                atm_strike = min((opt['strike_price'] for opt in latest_expiry_options), key=lambda x: abs(x - spot_price))
+            else:
+                atm_strike = spot_price
+
+            analytics = {
+                'atm_strike': atm_strike,
+                'total_call_delta': round(total_call_delta, 4),
+                'total_put_delta': round(total_put_delta, 4),
+                'net_delta': round(total_call_delta + total_put_delta, 4),
+                'total_strikes': len(set(opt['strike_price'] for opt in latest_expiry_options)) if latest_expiry_options else 0
             }
-        
+
+        # Build final result
+        result = {
+            'success': True,
+            'spot_price': spot_price,
+            'latest_expiry': latest_expiry if 'latest_expiry' in locals() else None,
+            'analytics': analytics,
+            'data': flat_options
+        }
+
         # Add warnings if any
-        if warnings:
+        if warnings and 'warnings' not in result:
             result['warnings'] = warnings
-        
+
         return result
         
     except Exception as e:
-        return {
-            'success': False,
-            'message': f'Failed to process option chain: {str(e)}'
-        }
+        return {'success': False, 'message': f'Failed to process option chain: {str(e)}', 'data': []}
