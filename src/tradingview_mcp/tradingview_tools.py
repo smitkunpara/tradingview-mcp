@@ -15,6 +15,8 @@ import os
 import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import contextlib
+import io
 
 from .validators import (
     validate_exchange, validate_timeframe, validate_news_provider,
@@ -178,15 +180,17 @@ def fetch_historical_data(
                 export_type='json',
                 websocket_jwt_token=jwt_token
             )
-            
-            data = streamer.stream(
-                exchange=exchange,
-                symbol=symbol,
-                timeframe=timeframe,
-                numb_price_candles=numb_price_candles,
-                indicator_id=[],
-                indicator_version=[]
-            )
+
+            # Capture stdout to prevent print statements from corrupting JSON
+            with contextlib.redirect_stdout(io.StringIO()):
+                data = streamer.stream(
+                    exchange=exchange,
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    numb_price_candles=numb_price_candles,
+                    indicator_id=[],
+                    indicator_version=[]
+                )
             merged_data = merge_ohlc_with_indicators(data)
             return {
                 'success': True,
@@ -212,7 +216,7 @@ def fetch_historical_data(
         def fetch_batch(batch_index: int, batch_ids: List[str], batch_versions: List[int]) -> Tuple[int, Dict, Optional[str]]:
             """
             Fetch a single batch of indicators in a thread.
-            
+
             Returns:
                 Tuple of (batch_index, response_data, error_message)
             """
@@ -220,13 +224,13 @@ def fetch_historical_data(
                 # For subsequent batches, request one extra candle per previous batch
                 extra = batch_index  # 0 for first batch, 1 for second, etc.
                 fetch_candles = numb_price_candles + extra
-                
+
                 # Generate fresh token for this batch
                 try:
                     batch_token = get_valid_jwt_token()
                 except ValueError as e:
                     return (batch_index, None, f"Token generation failed: {str(e)}")
-                
+
                 # Create a fresh Streamer per batch
                 batch_streamer = Streamer(
                     export_result=True,
@@ -234,17 +238,19 @@ def fetch_historical_data(
                     websocket_jwt_token=batch_token
                 )
 
-                resp = batch_streamer.stream(
-                    exchange=exchange,
-                    symbol=symbol,
-                    timeframe=timeframe,
-                    numb_price_candles=fetch_candles,
-                    indicator_id=batch_ids,
-                    indicator_version=batch_versions
-                )
-                
+                # Capture stdout to prevent print statements from corrupting JSON
+                with contextlib.redirect_stdout(io.StringIO()):
+                    resp = batch_streamer.stream(
+                        exchange=exchange,
+                        symbol=symbol,
+                        timeframe=timeframe,
+                        numb_price_candles=fetch_candles,
+                        indicator_id=batch_ids,
+                        indicator_version=batch_versions
+                    )
+
                 return (batch_index, resp, None)
-                
+
             except Exception as e:
                 return (batch_index, None, f"Batch {batch_index} failed: {str(e)}")
         
@@ -362,17 +368,19 @@ def fetch_news_headlines(
     
     try:
         news_scraper = NewsScraper(export_result=True, export_type='json')
-        
-        # Retrieve news headlines
-        news_headlines = news_scraper.scrape_headlines(
-            symbol=symbol,
-            exchange=exchange,
-            provider=provider_param,  # None for 'all'
-            area=area,
-            section="all",
-            sort='latest'
-        )
-        
+
+        # Capture stdout to prevent print statements from corrupting JSON
+        with contextlib.redirect_stdout(io.StringIO()):
+            # Retrieve news headlines
+            news_headlines = news_scraper.scrape_headlines(
+                symbol=symbol,
+                exchange=exchange,
+                provider=provider_param,  # None for 'all'
+                area=area,
+                section="all",
+                sort='latest'
+            )
+
         # Clean and format headlines
         cleared_headlines = []
         for headline in news_headlines:
@@ -384,9 +392,9 @@ def fetch_news_headlines(
                 "storyPath": headline.get("storyPath")
             }
             cleared_headlines.append(cleared_headline)
-        
+
         return cleared_headlines
-        
+
     except Exception as e:
         raise Exception(
             f"Failed to fetch news headlines from TradingView: {str(e)}. "
@@ -412,24 +420,26 @@ def fetch_news_content(story_paths: List[str]) -> List[Dict[str, Any]]:
     
     news_scraper = NewsScraper(export_result=True, export_type='json')
     news_content = []
-    
+
     for story_path in story_paths:
         try:
-            content = news_scraper.scrape_news_content(story_path=story_path)
-            
+            # Capture stdout to prevent print statements from corrupting JSON
+            with contextlib.redirect_stdout(io.StringIO()):
+                content = news_scraper.scrape_news_content(story_path=story_path)
+
             # Clean content for JSON serialization
             cleaned_content = clean_for_json(content)
-            
+
             # Extract text body
             body = extract_news_body(cleaned_content)
-            
+
             news_content.append({
                 "success": True,
                 "title": cleaned_content.get("title", ""),
                 "body": body,
                 "story_path": story_path
             })
-            
+
         except Exception as e:
             news_content.append({
                 "success": False,
@@ -438,7 +448,7 @@ def fetch_news_content(story_paths: List[str]) -> List[Dict[str, Any]]:
                 "story_path": story_path,
                 "error": f"Failed to fetch content: {str(e)}"
             })
-    
+
     return news_content
 
 
@@ -480,13 +490,15 @@ def fetch_all_indicators(
             export_type='json'
         )
 
-        # Request all indicators (current snapshot)
-        raw = indicators_scraper.scrape(
-            symbol=symbol,
-            exchange=exchange,
-            timeframe=timeframe,
-            allIndicators=True
-        )
+        # Capture stdout to prevent print statements from corrupting JSON
+        with contextlib.redirect_stdout(io.StringIO()):
+            # Request all indicators (current snapshot)
+            raw = indicators_scraper.scrape(
+                symbol=symbol,
+                exchange=exchange,
+                timeframe=timeframe,
+                allIndicators=True
+            )
 
         # The scraper typically returns a dict with 'status' and 'data'.
         if isinstance(raw, dict) and raw.get('status') in ('success', True):
@@ -564,12 +576,14 @@ def fetch_ideas(
             export_type=export_type
         )
 
-        ideas = ideas_scraper.scrape(
-            symbol=symbol,
-            startPage=startPage,
-            endPage=endPage,
-            sort=sort
-        )
+        # Capture stdout to prevent print statements from corrupting JSON
+        with contextlib.redirect_stdout(io.StringIO()):
+            ideas = ideas_scraper.scrape(
+                symbol=symbol,
+                startPage=startPage,
+                endPage=endPage,
+                sort=sort
+            )
 
         return {
             'success': True,
