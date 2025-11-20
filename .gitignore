@@ -21,3 +21,8 @@ uv.lock
 .roo
 
 *test*.py
+*test*.json
+.webui_secret_key
+debug_result.json
+/chat
+.github

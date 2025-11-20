@@ -47,9 +47,7 @@ def get_historical_data(
         description="Time interval for each candle. Options: 1m (1 minute), 5m, 15m, 30m, 1h (1 hour), 2h, 4h, 1d (1 day), 1w (1 week), 1M (1 month)"
     )],
     numb_price_candles: Annotated[Union[int, str], Field(
-        description="Number of historical candles to fetch (1-5000). Accepts int or str (e.g., 100 or '100'). More candles = longer history. E.g., 100 for last 100 periods.",
-        ge=1,
-        le=5000
+        description="Number of historical candles to fetch (1-5000). Accepts int or str (e.g., 100 or '100'). More candles = longer history. E.g., 100 for last 100 periods."
     )],
     indicators: Annotated[List[str], Field(
         description=(
@@ -78,6 +76,14 @@ def get_historical_data(
     Note: Requires active internet connection to fetch data from TradingView.
     """
     try:
+        # Validate numb_price_candles
+        try:
+            numb_price_candles = int(numb_price_candles) if isinstance(numb_price_candles, str) else numb_price_candles
+            if not (1 <= numb_price_candles <= 5000):
+                raise ValidationError(f"numb_price_candles must be between 1 and 5000, got {numb_price_candles}")
+        except ValueError:
+            raise ValidationError("numb_price_candles must be a valid integer")
+
         result = fetch_historical_data(
             exchange=exchange,
             symbol=symbol,
@@ -334,14 +340,10 @@ def get_ideas(
         max_length=20
     )],
     startPage: Annotated[Union[int, str], Field(
-        description="Starting page number for scraping ideas. Accepts int or str (e.g., 1 or '1').",
-        ge=1,
-        le=10
+        description="Starting page number for scraping ideas. Accepts int or str (e.g., 1 or '1')."
     )] = 1,
     endPage: Annotated[Union[int, str], Field(
-        description="Ending page number for scraping ideas. Accepts int or str (e.g., 1 or '1').",
-        ge=1,
-        le=10
+        description="Ending page number for scraping ideas. Accepts int or str (e.g., 1 or '1')."
     )] = 1,
     sort: Annotated[Literal['popular', 'recent'], Field(
         description="Sorting order for ideas. 'popular' for most liked, 'recent' for latest."
@@ -375,6 +377,24 @@ def get_ideas(
     for authentication. JWT tokens are automatically generated from cookies as needed.
     """
     try:
+        # Validate startPage
+        try:
+            startPage = int(startPage) if isinstance(startPage, str) else startPage
+            if not (1 <= startPage <= 10):
+                raise ValidationError(f"startPage must be between 1 and 10, got {startPage}")
+        except ValueError:
+            raise ValidationError("startPage must be a valid integer")
+
+        # Validate endPage
+        try:
+            endPage = int(endPage) if isinstance(endPage, str) else endPage
+            if not (1 <= endPage <= 10):
+                raise ValidationError(f"endPage must be between 1 and 10, got {endPage}")
+            if endPage < startPage:
+                raise ValidationError(f"endPage ({endPage}) must be greater than or equal to startPage ({startPage})")
+        except ValueError:
+            raise ValidationError("endPage must be a valid integer")
+
         # Validate parameters explicitly using centralized validators
         symbol = validate_symbol(symbol)
 
@@ -439,9 +459,7 @@ def get_option_chain_analysis(
             "- Returns 5 ITM (In-The-Money) strikes below spot price\n"
             "- Returns 5 OTM (Out-of-The-Money) strikes at/above spot price\n"
             "Total strikes returned: top_n * 2 (one set below, one set above spot)"
-        ),
-        ge=1,
-        le=100
+        )
     )] = 5
 ) -> str:
     """
@@ -561,6 +579,14 @@ def get_option_chain_analysis(
     using standard options pricing models. All monetary values reflect current market conditions.
     """
     try:
+        # Validate top_n
+        try:
+            top_n = int(top_n) if isinstance(top_n, str) else top_n
+            if not (1 <= top_n <= 100):
+                raise ValidationError(f"top_n must be between 1 and 100, got {top_n}")
+        except ValueError:
+            raise ValidationError("top_n must be a valid integer")
+
         # Validate parameters
         from .validators import validate_exchange, validate_symbol
         
