@@ -30,7 +30,7 @@ def extract_jwt_token() -> Optional[str]:
         )
     
     # Get URL from environment or use default
-    url = os.getenv("TRADINGVIEW_URL", "https://in.tradingview.com/chart/0M7cMdwj/?symbol=NSE%3ANIFTY")
+    url = os.getenv("TRADINGVIEW_URL")
     
     headers = {
         "Host": os.getenv("TRADINGVIEW_HOST", "in.tradingview.com"),

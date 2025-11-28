@@ -12,7 +12,7 @@ wheels/
 # Environment variables 
 .env
 
-# cutom folders
+# custom
 .kilocode
 tradingview-scraper
 /export
@@ -26,3 +26,4 @@ uv.lock
 debug_result.json
 /chat
 .github
+.vscode

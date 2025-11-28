@@ -115,7 +115,7 @@ def validate_exchange(exchange: Optional[str]) -> Optional[str]:
     exchange_upper = exchange.upper()
     if exchange_upper not in VALID_EXCHANGES:
         raise ValidationError(
-            f"Invalid exchange '{exchange}'. Must be one of: {', '.join(VALID_EXCHANGES[:10])}... "
+            f"Invalid exchange '{exchange}'. Must be one of: {', '.join(VALID_EXCHANGES)}... "
             f"(and {len(VALID_EXCHANGES) - 10} more)"
         )
     return exchange_upper
