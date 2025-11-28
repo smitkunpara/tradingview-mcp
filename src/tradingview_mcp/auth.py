@@ -31,6 +31,10 @@ def extract_jwt_token() -> Optional[str]:
     
     # Get URL from environment or use default
     url = os.getenv("TRADINGVIEW_URL")
+    if not url:
+        raise ValueError(
+            "TRADINGVIEW_URL environment variable is not set. Please set it to a valid TradingView chart URL."
+        )
     
     headers = {
         "Host": os.getenv("TRADINGVIEW_HOST", "in.tradingview.com"),

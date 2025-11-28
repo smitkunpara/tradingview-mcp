@@ -20,7 +20,6 @@ uv.lock
 .roocode
 .roo
 
-*test*.py
 *test*.json
 .webui_secret_key
 debug_result.json

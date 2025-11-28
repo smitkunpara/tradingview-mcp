@@ -8,8 +8,6 @@ from tradingview_scraper.symbols.stream import Streamer
 from tradingview_scraper.symbols.news import NewsScraper
 from tradingview_scraper.symbols.technicals import Indicators
 from tradingview_scraper.symbols.ideas import Ideas
-from tradingview_screener import Query, col
-import pandas as pd
 import jwt
 import os
 import time
