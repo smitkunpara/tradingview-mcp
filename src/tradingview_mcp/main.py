@@ -70,8 +70,8 @@ def get_historical_data(
     - metadata: Information about the request
     
     Example usage:
-    - Get last 100 1-minute candles for NIFTY with RSI:
-      get_historical_data("NSE", "NIFTY", "1m", 100, ["RSI"])
+    - Get last 100 1-minute candles for BTCUSD with RSI:
+      get_historical_data("BINANCE", "BTCUSD", "1m", 100, ["RSI"])
     
     Note: Requires active internet connection to fetch data from TradingView.
     """
