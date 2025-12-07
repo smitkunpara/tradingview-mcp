@@ -9,7 +9,9 @@ import base64
 import json
 import os
 from typing import Optional, Dict
-
+#load dotenv
+from dotenv import load_dotenv
+load_dotenv()
 
 def extract_jwt_token() -> Optional[str]:
     """
@@ -125,3 +127,8 @@ def get_token_info(token: str) -> Dict:
         }
     except Exception as e:
         return {'valid': False, 'error': str(e)}
+
+
+
+
+print(extract_jwt_token())

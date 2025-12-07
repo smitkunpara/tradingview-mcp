@@ -121,12 +121,12 @@ def get_news_headlines(
         max_length=20
     )],
     exchange: Annotated[Optional[str], Field(
-        description=f"Optional exchange filter. One of: {', '.join(VALID_EXCHANGES[:10])}... Leave empty for all exchanges.",
+        description=f"Optional exchange filter. One of: {', '.join(VALID_EXCHANGES)}... Leave empty for all exchanges.",
         min_length=2,
         max_length=30
     )] = None,
     provider: Annotated[str, Field(
-        description=f"News provider filter. Options: {', '.join(VALID_NEWS_PROVIDERS[:8])}... or 'all' for all providers.",
+        description=f"News provider filter. Options: {', '.join(VALID_NEWS_PROVIDERS)}... or 'all' for all providers.",
         min_length=3,
         max_length=20
     )] = "all",

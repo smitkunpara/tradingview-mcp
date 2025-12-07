@@ -23,7 +23,7 @@ from .validators import (
 )
 from .utils import (
     merge_ohlc_with_indicators, clean_for_json,
-    extract_news_body, convert_timestamp_to_indian_time
+    extract_news_body
 )
 from .auth import extract_jwt_token, get_token_info
 
@@ -186,8 +186,7 @@ def fetch_historical_data(
                     symbol=symbol,
                     timeframe=timeframe,
                     numb_price_candles=numb_price_candles,
-                    indicator_id=[],
-                    indicator_version=[]
+                    indicators=None
                 )
             merged_data = merge_ohlc_with_indicators(data)
             return {
@@ -205,13 +204,14 @@ def fetch_historical_data(
 
         # Batch indicators into groups of 2 (free account limit)
         BATCH_SIZE = 2
-        batched_ids = [indicator_ids[i:i+BATCH_SIZE] for i in range(0, len(indicator_ids), BATCH_SIZE)]
-        batched_versions = [indicator_versions[i:i+BATCH_SIZE] for i in range(0, len(indicator_versions), BATCH_SIZE)]
+        # Create list of tuples: [(indicator_id, version), ...]
+        indicator_tuples = list(zip(indicator_ids, indicator_versions))
+        batched_tuples = [indicator_tuples[i:i+BATCH_SIZE] for i in range(0, len(indicator_tuples), BATCH_SIZE)]
 
         combined_response = {'ohlc': None, 'indicator': {}}
         fetch_errors = []
         
-        def fetch_batch(batch_index: int, batch_ids: List[str], batch_versions: List[int]) -> Tuple[int, Dict, Optional[str]]:
+        def fetch_batch(batch_index: int, batch_tuples: List[Tuple[str, str]]) -> Tuple[int, Dict, Optional[str]]:
             """
             Fetch a single batch of indicators in a thread.
 
@@ -243,8 +243,7 @@ def fetch_historical_data(
                         symbol=symbol,
                         timeframe=timeframe,
                         numb_price_candles=fetch_candles,
-                        indicator_id=batch_ids,
-                        indicator_version=batch_versions
+                        indicators=batch_tuples
                     )
 
                 return (batch_index, resp, None)
@@ -253,11 +252,11 @@ def fetch_historical_data(
                 return (batch_index, None, f"Batch {batch_index} failed: {str(e)}")
         
         # Use ThreadPoolExecutor to fetch batches in parallel
-        with ThreadPoolExecutor(max_workers=len(batched_ids)) as executor:
+        with ThreadPoolExecutor(max_workers=len(batched_tuples)) as executor:
             # Submit all batch fetch tasks
             future_to_batch = {
-                executor.submit(fetch_batch, idx, batch_ids, batch_versions): idx
-                for idx, (batch_ids, batch_versions) in enumerate(zip(batched_ids, batched_versions))
+                executor.submit(fetch_batch, idx, batch_tuples): idx
+                for idx, batch_tuples in enumerate(batched_tuples)
             }
             
             # Collect results as they complete
@@ -316,7 +315,7 @@ def fetch_historical_data(
                 'timeframe': timeframe,
                 'candles_count': len(merged_data),
                 'indicators': indicators,
-                'batches': len(batched_ids)
+                'batches': len(batched_tuples)
             }
         }
         
@@ -365,7 +364,7 @@ def fetch_news_headlines(
     area = validate_area(area)
     
     try:
-        news_scraper = NewsScraper(export_result=True, export_type='json')
+        news_scraper = NewsScraper(export_result=False, export_type='json')
 
         # Capture stdout to prevent print statements from corrupting JSON
         with contextlib.redirect_stdout(io.StringIO()):
@@ -416,7 +415,7 @@ def fetch_news_content(story_paths: List[str]) -> List[Dict[str, Any]]:
     # Validate story paths
     story_paths = validate_story_paths(story_paths)
     
-    news_scraper = NewsScraper(export_result=True, export_type='json')
+    news_scraper = NewsScraper(export_result=False, export_type='json')
     news_content = []
 
     for story_path in story_paths:
@@ -484,7 +483,7 @@ def fetch_all_indicators(
 
     try:
         indicators_scraper = Indicators(
-            export_result=True,
+            export_result=False,
             export_type='json'
         )
 
@@ -524,7 +523,6 @@ def fetch_ideas(
     startPage: int = 1,
     endPage: int = 1,
     sort: str = 'popular',
-    export_result: bool = True,
     export_type: str = 'json'
 ) -> Dict[str, Any]:
     """
@@ -570,7 +568,7 @@ def fetch_ideas(
 
     try:
         ideas_scraper = Ideas(
-            export_result=export_result,
+            export_result=False,
             export_type=export_type
         )
 
@@ -582,13 +580,14 @@ def fetch_ideas(
                 endPage=endPage,
                 sort=sort
             )
-
-        return {
-            'success': True,
-            'ideas': ideas,
-            'count': len(ideas) if ideas is not None else 0,
-            'message': f"Scraped {len(ideas) if ideas is not None else 0} ideas for symbol '{symbol}'"
-        }
+        
+        if ideas==[]:
+            return {
+                'success': False,
+                "message": "No ideas found for the given symbol.",
+                "suggestion" : "Tell user to update the cookies after solving the captcha to access ideas."
+            }
+        return ideas
 
     except ValidationError:
         # Re-raise validation errors so callers can handle them consistently

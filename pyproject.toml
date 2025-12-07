@@ -7,13 +7,12 @@ requires-python = ">=3.11"
 dependencies = [
     "fastmcp>=0.1.0",
     "pydantic>=2.0.0",
-    "PyJWT>=2.0.0",
     "pytz>=2024.1",
-    "setuptools>=80.9.0,<81.0.0",
-    "tradingview-scraper @ git+https://github.com/smitkunpara/tradingview-scraper.git",
-    "requests>=2.32.5",
+    "tradingview-scraper==0.4.20",
+    "requests>=2.32.4",
     "python-dotenv>=1.0.0",
-    "python-toon @ git+https://github.com/xaviviro/python-toon.git",
+    "python-toon",
+    "setuptools",
 ]
 
 [build-system]
@@ -26,6 +25,7 @@ allow-direct-references = true
 [dependency-groups]
 dev = ["pytest>=8.0.0", "pytest-mock>=3.12.0"]
 
-[tool.uv.sources]
-tradingview-scraper = { git = "https://github.com/smitkunpara/tradingview-scraper.git" }
-python-toon = { git = "https://github.com/xaviviro/python-toon.git" }
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore:pkg_resources is deprecated as an API:UserWarning",
+]
