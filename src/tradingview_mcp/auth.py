@@ -126,8 +126,3 @@ def get_token_info(token: str) -> Dict:
         }
     except Exception as e:
         return {'valid': False, 'error': str(e)}
-
-
-
-
-print(extract_jwt_token())

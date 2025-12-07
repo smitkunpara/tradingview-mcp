@@ -98,19 +98,19 @@ def get_historical_data(
         return toon_data
     
     except ValidationError as e:
-        return {
+        return toon_encode({
             "success": False,
             "message": str(e),
             "data": [],
             "help": "Please check the parameter values and try again."
-        }
+        })
     except Exception as e:
-        return {
+        return toon_encode({
             "success": False,
             "message": f"Unexpected error: {str(e)}",
             "data": [],
             "help": "An unexpected error occurred. Please verify your inputs and try again."
-        }
+        })
 
 
 @mcp.tool
@@ -173,21 +173,21 @@ def get_news_headlines(
         return toon_data
         
     except ValidationError as e:
-        return {
+        return toon_encode({
             "success": False,
             "message": str(e),
             "headlines": [],
             "help": f"Valid exchanges: {', '.join(VALID_EXCHANGES[:5])}..., "
                    f"Valid providers: {', '.join(VALID_NEWS_PROVIDERS[:5])}..., "
                    f"Valid areas: {', '.join(VALID_AREAS)}"
-        }
+        })
     except Exception as e:
-        return {
+        return toon_encode({
             "success": False,
             "message": f"Failed to fetch news: {str(e)}",
             "headlines": [],
             "help": "Please verify the symbol exists and try again."
-        }
+        })
 
 
 @mcp.tool
@@ -229,19 +229,19 @@ def get_news_content(
         return toon_data
         
     except ValidationError as e:
-        return {
+        return toon_encode({
             "success": False,
             "message": str(e),
             "articles": [],
             "help": "Story paths must start with '/news/' and come from get_news_headlines() results"
-        }
+        })
     except Exception as e:
-        return {
+        return toon_encode({
             "success": False,
             "message": f"Failed to fetch news content: {str(e)}",
             "articles": [],
             "help": "Please verify the story paths are valid and try again"
-        }
+        })
 
 
 @mcp.tool
@@ -305,17 +305,17 @@ def get_all_indicators(
 
         return toon_data
     except ValidationError as e:
-        return {
+        return toon_encode({
             "success": False,
             "message": str(e),
             "data": {}
-        }
+        })
     except Exception as e:
-        return {
+        return toon_encode({
             "success": False,
             "message": f"Unexpected error: {str(e)}",
             "data": {}
-        }
+        })
 
 
 @mcp.tool
@@ -396,19 +396,19 @@ def get_ideas(
 
         return toon_data
     except ValidationError as e:
-        return {
+        return toon_encode({
             "success": False,
             "message": str(e),
             "ideas": [],
             "help": "Please check the parameter values and try again."
-        }
+        })
     except Exception as e:
-        return {
+        return toon_encode({
             "success": False,
             "message": f"Unexpected error: {str(e)}",
             "ideas": [],
             "help": "An unexpected error occurred. Please verify your inputs and try again."
-        }
+        })
 
 
 @mcp.tool
@@ -493,23 +493,21 @@ IV (overall/bid/ask), bid/ask/theo prices, intrinsic/time values for CALL/PUT at
             expiry_date=expiry_date,
             top_n=top_n
         )
-        with open("debug_result.json", 'w') as f:
-            json.dump(result, f, indent=4)
         # Encode option chain data in TOON format for token efficiency
         toon_data = toon_encode(result)
 
         return toon_data
         
     except ValidationError as e:
-        return {
+        return toon_encode({
             "success": False,
             "message": str(e)
-        }
+        })
     except Exception as e:
-        return {
+        return toon_encode({
             "success": False,
             "message": f"Unexpected error: {str(e)}"
-        }
+        })
 
 
 def main():

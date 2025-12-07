@@ -147,7 +147,6 @@ def fetch_historical_data(
         )
     
     indicator_ids, indicator_versions, errors, warnings = validate_indicators(indicators)
-
     # If there are fatal validation errors (unrecognized indicators), return
     if errors:
         return {
@@ -247,7 +246,6 @@ def fetch_historical_data(
                     )
 
                 return (batch_index, resp, None)
-
             except Exception as e:
                 return (batch_index, None, f"Batch {batch_index} failed: {str(e)}")
         
