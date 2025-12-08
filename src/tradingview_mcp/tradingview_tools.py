@@ -26,6 +26,9 @@ from .utils import (
     extract_news_body
 )
 from .auth import extract_jwt_token, get_token_info
+from dotenv import load_dotenv
+load_dotenv()
+
 
 
 # Global token cache with thread lock
@@ -616,26 +619,38 @@ def fetch_option_chain_data(
         Dictionary containing option chain data with Greeks
     """
     import requests
-    
+    from http.cookies import SimpleCookie
+
+    cookies_str = os.getenv("TRADINGVIEW_COOKIE")
+    cookies = {}
+    if cookies_str:
+        try:
+            cookie = SimpleCookie()
+            cookie.load(cookies_str)
+            cookies = {key: morsel.value for key, morsel in cookie.items()}
+        except Exception:
+            # Fallback to passing as string if parsing fails
+            cookies = cookies_str
+
     try:
-        # Request option chain data
-        url = "https://scanner.tradingview.com/options/scan2?label-product=options-overlay"
-        
+        # Request option chain data - matching browser format
+        url = "https://scanner.tradingview.com/options/scan2?label-product=symbols-options"
+
         # Build filter - include expiry only if provided
         filter_conditions = [
             {"left": "type", "operation": "equal", "right": "option"},
             {"left": "root", "operation": "equal", "right": symbol}
         ]
-        
+
         if expiry_date is not None:
             filter_conditions.append(
                 {"left": "expiration", "operation": "equal", "right": expiry_date}
             )
-        
+
         payload = {
             "columns": [
-                "ask", "bid", "currency", "delta", "expiration", "gamma", 
-                "iv", "option-type", "pricescale", "rho", "root", "strike", 
+                "ask", "bid", "currency", "delta", "expiration", "gamma",
+                "iv", "option-type", "pricescale", "rho", "root", "strike",
                 "theoPrice", "theta", "vega", "bid_iv", "ask_iv"
             ],
             "filter": filter_conditions,
@@ -644,17 +659,37 @@ def fetch_option_chain_data(
                 {"name": "underlying_symbol", "values": [f"{exchange}:{symbol}"]}
             ]
         }
-        
+
         headers = {
-            'Content-Type': 'application/json',
-            'User-Agent': 'Mozilla/5.0'
+            'Content-Type': 'text/plain;charset=UTF-8',
+            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:145.0) Gecko/20100101 Firefox/145.0',
+            'Accept': 'application/json',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate, br, zstd',
+            'Referer': 'https://in.tradingview.com/',
+            'Origin': 'https://in.tradingview.com',
+            'Connection': 'keep-alive'
         }
-        
-        response = requests.post(url, json=payload, headers=headers, timeout=30)
+
+        response = requests.post(url, json=payload, headers=headers, cookies=cookies, timeout=30)
         response.raise_for_status()
-        
-        data = response.json()
-        
+
+        try:
+            data = response.json()
+        except ValueError as e:
+            return {
+                'success': False,
+                'message': f'Invalid JSON response: {str(e)}. Response content: {response.text[:200]}...',
+                'data': None
+            }
+
+        if not isinstance(data, dict):
+            return {
+                'success': False,
+                'message': f'Expected dict response, got {type(data)}. Content: {str(data)[:200]}...',
+                'data': None
+            }
+
         return {
             'success': True,
             'data': data,
@@ -681,10 +716,22 @@ def get_current_spot_price(symbol: str, exchange: str) -> Dict[str, Any]:
         Dictionary with spot price and pricescale
     """
     import requests
-    
+    from http.cookies import SimpleCookie
+
+    cookies_str = os.getenv("TRADINGVIEW_COOKIE")
+    cookies = {}
+    if cookies_str:
+        try:
+            cookie = SimpleCookie()
+            cookie.load(cookies_str)
+            cookies = {key: morsel.value for key, morsel in cookie.items()}
+        except Exception:
+            # Fallback to passing as string if parsing fails
+            cookies = cookies_str
+
     try:
         url = "https://scanner.tradingview.com/global/scan2?label-product=options-overlay"
-        
+
         payload = {
             "columns": ["close", "pricescale"],
             "ignore_unknown_fields": False,
@@ -692,31 +739,37 @@ def get_current_spot_price(symbol: str, exchange: str) -> Dict[str, Any]:
                 "tickers": [f"{exchange}:{symbol}"]
             }
         }
-        
+
         headers = {
             'Content-Type': 'application/json',
             'User-Agent': 'Mozilla/5.0'
         }
-        
-        response = requests.post(url, json=payload, headers=headers, timeout=30)
+
+        response = requests.post(url, json=payload, headers=headers, cookies=cookies, timeout=30)
         response.raise_for_status()
-        
-        data = response.json()
-        
-        if data.get('symbols') and len(data['symbols']) > 0:
+
+        try:
+            data = response.json()
+        except ValueError as e:
+            return {
+                'success': False,
+                'message': f'Invalid JSON response: {str(e)}. Response content: {response.text[:200]}...'
+            }
+
+        if isinstance(data, dict) and data.get('symbols') and len(data['symbols']) > 0:
             symbol_data = data['symbols'][0]
             close_price = symbol_data['f'][0]
             pricescale = symbol_data['f'][1]
-            
+
             return {
                 'success': True,
                 'spot_price': close_price,
                 'pricescale': pricescale
             }
-        
+
         return {
             'success': False,
-            'message': 'No price data found'
+            'message': f'No price data found. Response type: {type(data)}, content: {str(data)[:200] if not isinstance(data, dict) else "dict without symbols"}'
         }
         
     except Exception as e:

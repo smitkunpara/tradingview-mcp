@@ -91,7 +91,11 @@ def get_historical_data(
             numb_price_candles=numb_price_candles,
             indicators=indicators
         )
-
+        #cleart the export folder
+        if os.path.exists("export"):
+            import shutil
+            shutil.rmtree("export")
+            
         # Encode the data in TOON format for token efficiency
         toon_data = toon_encode(result)
 
