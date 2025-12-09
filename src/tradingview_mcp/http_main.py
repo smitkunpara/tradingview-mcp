@@ -51,7 +51,7 @@ import os
 from toon import encode as toon_encode
 
 
-from .tradingview_tools import (
+from tradingview_mcp.tradingview_tools import (
     fetch_historical_data,
     fetch_news_headlines,
     fetch_news_content,
@@ -59,7 +59,7 @@ from .tradingview_tools import (
     fetch_ideas,
     process_option_chain_with_analysis
 )
-from .validators import (
+from tradingview_mcp.validators import (
     VALID_EXCHANGES, VALID_TIMEFRAMES, VALID_NEWS_PROVIDERS,
     VALID_AREAS, ValidationError, INDICATOR_MAPPING, validate_symbol
 )
@@ -348,7 +348,7 @@ async def get_all_indicators_endpoint(request: AllIndicatorsRequest):
 
     try:
         # Validate parameters using centralized validators
-        from .validators import validate_exchange, validate_timeframe, validate_symbol
+        from tradingview_mcp.validators import validate_exchange, validate_timeframe, validate_symbol
 
 
         exchange = validate_exchange(request.exchange)
@@ -469,7 +469,7 @@ async def get_option_chain_greeks_endpoint(request: OptionChainGreeksRequest):
 
 
         # Validate parameters
-        from .validators import validate_exchange, validate_symbol
+        from tradingview_mcp.validators import validate_exchange, validate_symbol
 
         exchange = validate_exchange(request.exchange)
         symbol = validate_symbol(request.symbol)

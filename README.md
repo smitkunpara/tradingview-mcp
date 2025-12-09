@@ -1,6 +1,6 @@
 # TradingView MCP Server
 
-A FastMCP server that provides tools to scrape and fetch real-time data from TradingView, including historical prices, technical indicators, news, trading ideas, and options chain analysis.
+A FastMCP server and HTTP API that provides tools to scrape and fetch real-time data from TradingView, including historical prices, technical indicators, news, trading ideas, and options chain analysis. Supports both MCP protocol for AI assistants and REST API for direct integration.
 
 ## Installation
 
@@ -35,6 +35,16 @@ cp .env.example .env  # Copy and edit with your TradingView cookies
 10. Paste this value into your `.env` file as `TRADINGVIEW_COOKIE="your_cookies_here"`
 
 **Note:** Convert the cookies to [escaped format](https://onlinestringtools.com/escape-string) 
+
+### FastMCP Cloud Deployment
+
+For deploying on FastMCP cloud platform:
+
+- **Entrypoint**: Use `src/tradingview_mcp/main.py` (the MCP server)
+- **NOT**: `src/tradingview_mcp/http_main.py` (that's the HTTP API server)
+
+The MCP server (`main.py`) implements the FastMCP protocol for AI assistant integration, while the HTTP server (`http_main.py`) provides REST API endpoints for direct web access.
+
 ### MCP Configuration
 
 To use this server with an MCP client (like Claude Desktop), add the following configuration to your MCP settings file (usually `mcp.json` or similar):
@@ -61,21 +71,98 @@ To use this server with an MCP client (like Claude Desktop), add the following c
 }
 ```
 
+**Note:** This configuration is for local MCP clients. For FastMCP cloud deployment, set the entrypoint to `src/tradingview_mcp/main.py` in your deployment configuration.
+
 **Note:** Replace the placeholder values with your actual TradingView data:
 - `"your_tradingview_cookies_here"`: Your escaped TradingView cookies
 - `"your_chart_id"`: Your actual TradingView chart ID (obtained from the Configuration section above)
 - Other values can usually use the defaults shown
 
-## Available MCP Tools
+## HTTP API Server
 
-The server provides the following MCP tools:
+The project also includes a FastAPI-based HTTP server that provides the same functionality as REST API endpoints. This is useful for direct HTTP requests or integration with web applications.
 
-- **get_historical_data**: Fetch historical OHLCV data with technical indicators
-- **get_news_headlines**: Get latest news headlines for trading symbols
-- **get_news_content**: Fetch full content of news articles
-- **get_all_indicators**: Get current values for all technical indicators
-- **get_ideas**: Scrape trading ideas from TradingView community
-- **get_option_chain_greeks**: Get detailed options chain with Greeks and analytics
+### Running the HTTP Server
+
+```bash
+# Using uv (recommended)
+uv run python src/tradingview_mcp/http_main.py
+
+# Or using python directly
+python src/tradingview_mcp/http_main.py
+```
+
+The server will start on `http://localhost:8000` with automatic API documentation at `http://localhost:8000/docs`.
+
+**Note:** The HTTP server uses the same environment variables as the MCP server. Make sure your `.env` file contains the `TRADINGVIEW_COOKIE` variable.
+
+### HTTP API Endpoints
+
+All endpoints accept JSON requests and return TOON-encoded responses for token efficiency:
+
+- **POST /historical-data**: Fetch historical OHLCV data with technical indicators
+- **POST /news-headlines**: Get latest news headlines for trading symbols  
+- **POST /news-content**: Fetch full content of news articles
+- **POST /all-indicators**: Get current values for all technical indicators
+- **POST /ideas**: Scrape trading ideas from TradingView community
+- **POST /option-chain-greeks**: Get detailed options chain with Greeks and analytics
+- **GET /privacy-policy**: View privacy policy and disclaimer
+- **GET /**: API information and available endpoints
+
+### Example HTTP Request
+
+```bash
+curl -X POST "http://localhost:8000/historical-data" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "exchange": "NSE",
+    "symbol": "NIFTY",
+    "timeframe": "1d",
+    "numb_price_candles": 100,
+    "indicators": ["RSI", "MACD"]
+  }'
+```
+
+## Available Tools/Endpoints
+
+The server provides the following functionality through both MCP tools and HTTP API endpoints:
+
+### Data Fetching Tools
+- **get_historical_data / POST /historical-data**: Fetch historical OHLCV data with technical indicators
+  - Supports multiple exchanges (NSE, NASDAQ, BINANCE, etc.)
+  - Timeframes: 1m, 5m, 15m, 30m, 1h, 2h, 4h, 1d, 1w, 1M
+  - Indicators: RSI, MACD, CCI, Bollinger Bands, and more
+  - Returns TOON-encoded data for token efficiency
+
+- **get_all_indicators / POST /all-indicators**: Get current values for all technical indicators
+  - Real-time indicator snapshots
+  - Supports all major technical indicators
+
+### News & Content Tools
+- **get_news_headlines / POST /news-headlines**: Get latest news headlines for trading symbols
+  - Filter by exchange, provider, and geographical area
+  - Supports multiple news sources
+
+- **get_news_content / POST /news-content**: Fetch full content of news articles
+  - Extract complete article text from story paths
+  - Handles multiple articles in single request
+
+### Community & Analysis Tools
+- **get_ideas / POST /ideas**: Scrape trading ideas from TradingView community
+  - Sort by popularity or recency
+  - Paginated results
+
+- **get_option_chain_greeks / POST /option-chain-greeks**: Get detailed options chain with Greeks and analytics
+  - Complete Greeks calculation (Delta, Gamma, Theta, Vega, Rho)
+  - Implied Volatility analysis
+  - Bid/ask spreads and theoretical pricing
+  - Supports multiple expiries and strike filtering
+
+### Additional Endpoints
+- **GET /privacy-policy**: View privacy policy and disclaimer
+- **GET /**: API information and available endpoints
+
+All endpoints return structured JSON responses with TOON encoding for efficient token usage in AI applications.
 
 ## Contributing
 

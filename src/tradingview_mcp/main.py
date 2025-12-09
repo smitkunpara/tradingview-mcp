@@ -9,8 +9,9 @@ from fastmcp import FastMCP
 from dotenv import load_dotenv
 import json
 from toon import encode as toon_encode
+import os
 
-from .tradingview_tools import (
+from tradingview_mcp.tradingview_tools import (
     fetch_historical_data,
     fetch_news_headlines,
     fetch_news_content,
@@ -18,7 +19,7 @@ from .tradingview_tools import (
     fetch_ideas,
     process_option_chain_with_analysis
 )
-from .validators import (
+from tradingview_mcp.validators import (
     VALID_EXCHANGES, VALID_TIMEFRAMES, VALID_NEWS_PROVIDERS,
     VALID_AREAS, ValidationError,INDICATOR_MAPPING,validate_symbol
 )
@@ -296,7 +297,7 @@ def get_all_indicators(
     try:
         # Validate parameters explicitly using centralized validators so errors are
         # consistent with the rest of the codebase and reference VALID_* constants.
-        from .validators import validate_exchange, validate_timeframe, validate_symbol
+        from tradingview_mcp.validators import validate_exchange, validate_timeframe, validate_symbol
 
         exchange = validate_exchange(exchange)
         symbol = validate_symbol(symbol)
@@ -486,7 +487,7 @@ IV (overall/bid/ask), bid/ask/theo prices, intrinsic/time values for CALL/PUT at
             raise ValidationError("top_n must be a valid integer")
 
         # Validate parameters
-        from .validators import validate_exchange, validate_symbol
+        from tradingview_mcp.validators import validate_exchange, validate_symbol
         
         exchange = validate_exchange(exchange)
         symbol = validate_symbol(symbol)

@@ -6,7 +6,7 @@ from datetime import datetime
 import pytz
 from typing import Any, Dict, List
 from bs4 import Tag, NavigableString
-from .validators import INDICATOR_MAPPING, INDICATOR_FIELD_MAPPING
+from tradingview_mcp.validators import INDICATOR_MAPPING, INDICATOR_FIELD_MAPPING
 
 
 def convert_timestamp_to_indian_time(timestamp: float) -> str:
