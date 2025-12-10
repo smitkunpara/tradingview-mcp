@@ -11,7 +11,7 @@ import json
 from toon import encode as toon_encode
 import os
 
-from tradingview_mcp.tradingview_tools import (
+from .tradingview_tools import (
     fetch_historical_data,
     fetch_news_headlines,
     fetch_news_content,
@@ -19,9 +19,10 @@ from tradingview_mcp.tradingview_tools import (
     fetch_ideas,
     process_option_chain_with_analysis
 )
-from tradingview_mcp.validators import (
+from .validators import (
     VALID_EXCHANGES, VALID_TIMEFRAMES, VALID_NEWS_PROVIDERS,
-    VALID_AREAS, ValidationError,INDICATOR_MAPPING,validate_symbol
+    VALID_AREAS, ValidationError,INDICATOR_MAPPING,
+    validate_symbol,validate_exchange, validate_timeframe
 )
 
 
@@ -295,17 +296,11 @@ def get_all_indicators(
     to be set for authentication. JWT tokens are automatically generated from cookies.
     """
     try:
-        # Validate parameters explicitly using centralized validators so errors are
-        # consistent with the rest of the codebase and reference VALID_* constants.
-        from tradingview_mcp.validators import validate_exchange, validate_timeframe, validate_symbol
-
         exchange = validate_exchange(exchange)
         symbol = validate_symbol(symbol)
         timeframe = validate_timeframe(timeframe)
 
         result = fetch_all_indicators(exchange=exchange, symbol=symbol, timeframe=timeframe)
-
-        # Encode indicators in TOON format for token efficiency
         toon_data = toon_encode(result)
 
         return toon_data
@@ -478,7 +473,6 @@ IV (overall/bid/ask), bid/ask/theo prices, intrinsic/time values for CALL/PUT at
 **Use cases:** Build straddles/strangles, delta-hedge, IV crush trades, gamma scalps, spot support levels.
 """
     try:
-        # Validate top_n
         try:
             top_n = int(top_n) if isinstance(top_n, str) else top_n
             if not (1 <= top_n <= 20):
@@ -486,9 +480,6 @@ IV (overall/bid/ask), bid/ask/theo prices, intrinsic/time values for CALL/PUT at
         except ValueError:
             raise ValidationError("top_n must be a valid integer")
 
-        # Validate parameters
-        from tradingview_mcp.validators import validate_exchange, validate_symbol
-        
         exchange = validate_exchange(exchange)
         symbol = validate_symbol(symbol)
         
@@ -517,15 +508,15 @@ IV (overall/bid/ask), bid/ask/theo prices, intrinsic/time values for CALL/PUT at
 
 def main():
     """Run the MCP server."""
-    print("🚀 Starting TradingView MCP Server...")
-    print("📊 Available tools:")
+    print("Starting TradingView MCP Server...")
+    print("Available tools:")
     print("   - get_historical_data: Fetch OHLCV data with indicators")
     print("   - get_news_headlines: Get latest news headlines")
     print("   - get_news_content: Fetch full news articles")
     print("   - get_all_indicators: Get current values for all technical indicators")
     print("   - get_ideas: Get trading ideas from TradingView community")
     print("   - get_option_chain_greeks: Get detailed option chain with full Greeks, IV & analytics")
-    print("\n⚡ Server is ready!")
+    print("\n Server is ready!")
     mcp.run()
 
 

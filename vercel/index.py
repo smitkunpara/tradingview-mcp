@@ -51,7 +51,7 @@ import os
 from toon import encode as toon_encode
 
 
-from tradingview_mcp.tradingview_tools import (
+from src.tradingview_mcp.tradingview_tools import (
     fetch_historical_data,
     fetch_news_headlines,
     fetch_news_content,
@@ -59,7 +59,7 @@ from tradingview_mcp.tradingview_tools import (
     fetch_ideas,
     process_option_chain_with_analysis
 )
-from tradingview_mcp.validators import (
+from src.tradingview_mcp.validators import (
     VALID_EXCHANGES, VALID_TIMEFRAMES, VALID_NEWS_PROVIDERS,
     VALID_AREAS, ValidationError, INDICATOR_MAPPING, validate_symbol
 )
@@ -71,12 +71,15 @@ load_dotenv()
 
 
 # Initialize FastAPI application
+vercel_backend_url = os.getenv("VERCEL_URL",None)
+if vercel_backend_url:
+    print(f"🌐 Vercel backend URL set to: {vercel_backend_url}")
 # This creates the web server instance that will handle HTTP requests
 app = FastAPI(
     title="TradingView HTTP API",
     description="REST API for TradingView data scraping tools",
     version="1.0.0",
-    servers=[{"url": "https://4eb70c744992.ngrok-free.app"}]
+    servers=[{"url": vercel_backend_url}] if vercel_backend_url else None
 )
 
 
@@ -89,18 +92,18 @@ class HistoricalDataRequest(BaseModel):
     Request model for historical data endpoint.
 
     Attributes:
-    - exchange: Stock exchange name (e.g., 'NSE', 'NASDAQ'). Must be uppercase and in VALID_EXCHANGES.
-    - symbol: Trading symbol/ticker (e.g., 'NIFTY', 'AAPL'). Max 20 characters.
-    - timeframe: Time interval for candles. One of: '1m', '5m', '15m', '30m', '1h', '2h', '4h', '1d', '1w', '1M'.
-    - numb_price_candles: Number of historical candles to fetch (1-5000). Can be int or str.
-    - indicators: List of technical indicators to include (optional). Options from INDICATOR_MAPPING.keys().
+    - exchange: Stock exchange name (e.g., 'NSE', 'NASDAQ', 'BINANCE'). Must be one of the valid exchanges like NSE, NASDAQ, BINANCE... Use uppercase format.
+    - symbol: Trading symbol/ticker (e.g., 'NIFTY', 'AAPL', 'BTCUSD'). Search online for correct symbol format for your exchange.
+    - timeframe: Time interval for each candle. Options: 1m (1 minute), 5m, 15m, 30m, 1h (1 hour), 2h, 4h, 1d (1 day), 1w (1 week), 1M (1 month)
+    - numb_price_candles: Number of historical candles to fetch (1-5000). Accepts int or str (e.g., 100 or '100'). More candles = longer history. E.g., 100 for last 100 periods.
+    - indicators: List of technical indicators to include. Options: RSI, MACD, CCI, BB. Leave empty for no indicators.
     - cookie: TradingView cookie string for authentication (optional, uses env var if not provided).
     """
-    exchange: str = Field(..., min_length=2, max_length=30, description=f"Stock exchange name. Valid: {', '.join(VALID_EXCHANGES[:5])}...")
-    symbol: str = Field(..., min_length=1, max_length=20, description="Trading symbol/ticker")
-    timeframe: Literal['1m', '5m', '15m', '30m', '1h', '2h', '4h', '1d', '1w', '1M'] = Field(..., description="Time interval for candles")
-    numb_price_candles: Union[int, str] = Field(..., description="Number of candles (1-5000)")
-    indicators: List[str] = Field(default=[], description=f"Technical indicators. Options: {', '.join(INDICATOR_MAPPING.keys())}")
+    exchange: str = Field(..., min_length=2, max_length=30, description=f"Stock exchange name (e.g., 'NSE', 'NASDAQ', 'BINANCE'). Must be one of the valid exchanges like {', '.join(VALID_EXCHANGES[:5])}... Use uppercase format.")
+    symbol: str = Field(..., min_length=1, max_length=20, description="Trading symbol/ticker (e.g., 'NIFTY', 'AAPL', 'BTCUSD'). Search online for correct symbol format for your exchange.")
+    timeframe: Literal['1m', '5m', '15m', '30m', '1h', '2h', '4h', '1d', '1w', '1M'] = Field(..., description="Time interval for each candle. Options: 1m (1 minute), 5m, 15m, 30m, 1h (1 hour), 2h, 4h, 1d (1 day), 1w (1 week), 1M (1 month)")
+    numb_price_candles: Union[int, str] = Field(..., description="Number of historical candles to fetch (1-5000). Accepts int or str (e.g., 100 or '100'). More candles = longer history. E.g., 100 for last 100 periods.")
+    indicators: List[str] = Field(default=[], description=f"List of technical indicators to include. Options: {', '.join(INDICATOR_MAPPING.keys())}. Example: ['RSI', 'MACD', 'CCI', 'BB']. Leave empty for no indicators.")
     cookie: Optional[str] = Field(None, description="TradingView cookie string for authentication")
 
 
@@ -115,10 +118,10 @@ class NewsHeadlinesRequest(BaseModel):
     - area: Geographical area filter. One of: 'world', 'americas', 'europe', 'asia', 'oceania', 'africa'. Default 'asia'.
     - cookie: TradingView cookie string for authentication (optional, uses env var if not provided).
     """
-    symbol: str = Field(..., min_length=1, max_length=20, description="Trading symbol for news")
-    exchange: Optional[str] = Field(None, min_length=2, max_length=30, description=f"Optional exchange filter. Valid: {', '.join(VALID_EXCHANGES[:5])}...")
-    provider: str = Field("all", min_length=3, max_length=20, description=f"News provider. Options: {', '.join(VALID_NEWS_PROVIDERS[:5])}... or 'all'")
-    area: Literal['world', 'americas', 'europe', 'asia', 'oceania', 'africa'] = Field('asia', description="Geographical area filter")
+    symbol: str = Field(..., min_length=1, max_length=20, description="Trading symbol for news (e.g., 'NIFTY', 'AAPL', 'BTC'). Required. Search online for correct symbol.")
+    exchange: Optional[str] = Field(None, min_length=2, max_length=30, description=f"Optional exchange filter. One of: {', '.join(VALID_EXCHANGES)}... Leave empty for all exchanges.")
+    provider: str = Field("all", min_length=3, max_length=20, description=f"News provider filter. Options: {', '.join(VALID_NEWS_PROVIDERS)}... or 'all' for all providers.")
+    area: Literal['world', 'americas', 'europe', 'asia', 'oceania', 'africa'] = Field('asia', description="Geographical area filter for news. Default is 'asia'.")
     cookie: Optional[str] = Field(None, description="TradingView cookie string for authentication")
 
 
@@ -130,7 +133,7 @@ class NewsContentRequest(BaseModel):
     - story_paths: List of story paths from news headlines. Each must start with '/news/'. Max 20 items.
     - cookie: TradingView cookie string for authentication (optional, uses env var if not provided).
     """
-    story_paths: List[str] = Field(..., min_items=1, max_items=20, description="Story paths from get_news_headlines results. Each starts with '/news/'")
+    story_paths: List[str] = Field(..., min_items=1, max_items=20, description="List of story paths from news headlines. Each path must start with '/news/'. Get these from get_news_headlines() results.")
     cookie: Optional[str] = Field(None, description="TradingView cookie string for authentication")
 
 
@@ -144,9 +147,9 @@ class AllIndicatorsRequest(BaseModel):
     - timeframe: Time interval for indicator snapshot. One of VALID_TIMEFRAMES. Default '1m'.
     - cookie: TradingView cookie string for authentication (optional, uses env var if not provided).
     """
-    symbol: str = Field(..., min_length=1, max_length=20, description="Trading symbol/ticker")
-    exchange: str = Field(..., min_length=2, max_length=30, description=f"Exchange name. Valid: {', '.join(VALID_EXCHANGES[:5])}...")
-    timeframe: Literal['1m', '5m', '15m', '30m', '1h', '2h', '4h', '1d', '1w', '1M'] = Field('1m', description="Timeframe for indicators")
+    symbol: str = Field(..., min_length=1, max_length=20, description="Trading symbol/ticker (e.g., 'NIFTY', 'AAPL', 'BTCUSD'). Required.")
+    exchange: str = Field(..., min_length=2, max_length=30, description=f"Stock exchange name (e.g., 'NSE'). Must be one of the valid exchanges. Valid examples: {', '.join(VALID_EXCHANGES[:5])}... Use uppercase format.")
+    timeframe: Literal['1m', '5m', '15m', '30m', '1h', '2h', '4h', '1d', '1w', '1M'] = Field('1m', description=f"Time interval for indicator snapshot. Valid options: {', '.join(VALID_TIMEFRAMES)}")
     cookie: Optional[str] = Field(None, description="TradingView cookie string for authentication")
 
 
@@ -161,10 +164,10 @@ class IdeasRequest(BaseModel):
     - sort: Sorting order. 'popular' or 'recent'. Default 'popular'.
     - cookie: TradingView cookie string for authentication (optional, uses env var if not provided).
     """
-    symbol: str = Field(..., min_length=1, max_length=20, description="Trading symbol/ticker")
-    startPage: Union[int, str] = Field(1, description="Starting page number (1-10)")
-    endPage: Union[int, str] = Field(1, description="Ending page number (1-10, >= startPage)")
-    sort: Literal['popular', 'recent'] = Field('popular', description="Sorting order for ideas")
+    symbol: str = Field(..., min_length=1, max_length=20, description="Trading symbol/ticker (e.g., 'NIFTY', 'AAPL', 'BTCUSD'). Search online for correct symbol format for your exchange.")
+    startPage: Union[int, str] = Field(1, description="Starting page number for scraping ideas. Accepts int or str (e.g., 1 or '1').")
+    endPage: Union[int, str] = Field(1, description="Ending page number for scraping ideas. Accepts int or str (e.g., 1 or '1').")
+    sort: Literal['popular', 'recent'] = Field('popular', description="Sorting order for ideas. 'popular' for most liked, 'recent' for latest.")
     cookie: Optional[str] = Field(None, description="TradingView cookie string for authentication")
 
 
@@ -179,10 +182,10 @@ class OptionChainGreeksRequest(BaseModel):
     - top_n: Strikes per side (1-20). Can be int or str. Default 5.
     - cookie: TradingView cookie string for authentication (optional, uses env var if not provided).
     """
-    symbol: str = Field(..., min_length=1, max_length=20, description="Underlying symbol")
-    exchange: str = Field(..., min_length=2, max_length=30, description=f"Exchange name. Valid: {', '.join(VALID_EXCHANGES[:5])}...")
-    expiry_date: Optional[Union[int, str]] = Field(None, description="Expiry date: None (all), 'latest', or YYYYMMDD")
-    top_n: Union[int, str] = Field(5, description="Strikes per side (1-20)")
+    symbol: str = Field(..., min_length=1, max_length=20, description="Underlying symbol (e.g., 'NIFTY', 'BANKNIFTY'). Required.")
+    exchange: str = Field(..., min_length=2, max_length=30, description=f"Stock exchange name (e.g., 'NSE'). Must be one of the valid exchanges. Valid examples: {', '.join(VALID_EXCHANGES[:5])}... Use uppercase format.")
+    expiry_date: Optional[Union[int, str]] = Field(None, description="Option expiry date:\n- None (default): ALL expiries grouped by date\n- 'latest': NEAREST expiry only\n- int YYYYMMDD (e.g., 20251202): SPECIFIC expiry")
+    top_n: Union[int, str] = Field(5, description="Strikes per side (ITM below + OTM >= spot). Default 3, max 20.\nE.g., top_n=5 → 5 ITM + 5 OTM = 10 strikes total.")
     cookie: Optional[str] = Field(None, description="TradingView cookie string for authentication")
 
 
@@ -193,13 +196,23 @@ class OptionChainGreeksRequest(BaseModel):
 @app.post("/historical-data")
 async def get_historical_data_endpoint(request: HistoricalDataRequest):
     """
-    Fetch historical OHLCV data with technical indicators.
-
-    This endpoint mirrors the get_historical_data MCP tool.
-    Accepts HistoricalDataRequest JSON and returns TOON-encoded response.
-
-    Returns:
-    - TOON-encoded dict with success, data, errors, metadata
+    Fetch historical OHLCV data with technical indicators from TradingView.
+    
+    Retrieves historical price data (Open, High, Low, Close, Volume) for any
+    trading instrument along with specified technical indicators. Data includes
+    timestamps converted to Indian Standard Time (IST).
+    
+    Returns a dictionary containing:
+    - success: Boolean indicating if operation succeeded
+    - data: List of OHLCV candles with indicator values
+    - errors: List of any errors or warnings
+    - metadata: Information about the request
+    
+    Example usage:
+    - Get last 100 1-minute candles for BTCUSD with RSI:
+      POST /historical-data with {"exchange": "BINANCE", "symbol": "BTCUSD", "timeframe": "1m", "numb_price_candles": 100, "indicators": ["RSI"]}
+    
+    Note: Requires active internet connection to fetch data from TradingView.
     """
     # Handle cookie override
     original_cookie = os.environ.get("TRADINGVIEW_COOKIE")
@@ -250,13 +263,26 @@ async def get_historical_data_endpoint(request: HistoricalDataRequest):
 @app.post("/news-headlines")
 async def get_news_headlines_endpoint(request: NewsHeadlinesRequest):
     """
-    Get latest news headlines for a symbol.
-
-    This endpoint mirrors the get_news_headlines MCP tool.
-    Accepts NewsHeadlinesRequest JSON and returns TOON-encoded headlines.
-
-    Returns:
-    - TOON-encoded dict with headlines list
+    Scrape latest news headlines from TradingView for a specific symbol.
+    
+    Fetches recent news headlines related to a trading symbol from various
+    news providers. Returns structured headline data including title, source,
+    publication time, and story paths for fetching full content.
+    
+    Returns a list of headlines, each containing:
+    - title: Headline text
+    - provider: News source
+    - published: Publication timestamp
+    - source: Original source URL
+    - storyPath: Path for fetching full article content
+    
+    Example usage:
+    - Get all news for NIFTY from NSE: 
+      POST /news-headlines with {"symbol": "NIFTY", "exchange": "NSE", "provider": "all", "area": "asia"}
+    - Get crypto news for Bitcoin:
+      POST /news-headlines with {"symbol": "BTC", "provider": "coindesk", "area": "world"}
+    
+    Use the storyPath from results with /news-content to fetch full articles.
     """
     # Handle cookie override
     original_cookie = os.environ.get("TRADINGVIEW_COOKIE")
@@ -296,13 +322,26 @@ async def get_news_headlines_endpoint(request: NewsHeadlinesRequest):
 @app.post("/news-content")
 async def get_news_content_endpoint(request: NewsContentRequest):
     """
-    Fetch full content of news articles.
-
-    This endpoint mirrors the get_news_content MCP tool.
-    Accepts NewsContentRequest JSON and returns TOON-encoded articles.
-
-    Returns:
-    - TOON-encoded dict with articles list
+    Fetch full news article content using story paths from headlines.
+    
+    Retrieves the complete article text for news stories using the story paths
+    obtained from /news-headlines. Processes multiple articles in a single
+    request and extracts the main text content.
+    
+    Returns a list of articles, each containing:
+    - success: Whether content was fetched successfully
+    - title: Article title
+    - body: Full article text content
+    - story_path: Original story path used
+    - error: Error message if fetch failed (only on failure)
+    
+    Example usage:
+    1. First get headlines: POST /news-headlines with {"symbol": "AAPL"}
+    2. Extract story paths from response
+    3. Get full content: POST /news-content with {"story_paths": ["/news/story1", "/news/story2"]}
+    
+    Note: Some articles may fail to load due to source restrictions.
+    The function will still return partial results for successful fetches.
     """
     # Handle cookie override
     original_cookie = os.environ.get("TRADINGVIEW_COOKIE")
@@ -333,13 +372,27 @@ async def get_news_content_endpoint(request: NewsContentRequest):
 @app.post("/all-indicators")
 async def get_all_indicators_endpoint(request: AllIndicatorsRequest):
     """
-    Get current values for all technical indicators.
+    Return current values for all available technical indicators for a symbol.
 
-    This endpoint mirrors the get_all_indicators MCP tool.
-    Accepts AllIndicatorsRequest JSON and returns TOON-encoded indicators.
+    This tool calls the internal indicators scraper and returns a dictionary of
+    current indicator values (a snapshot). It is designed to provide only the
+    latest/current values (not historical series).
 
-    Returns:
-    - TOON-encoded dict with success, data, message
+    Parameters
+    - symbol (str): Trading symbol, e.g. 'NIFTY', 'AAPL'.
+    - exchange (str): Exchange name, e.g. 'NSE'. Use uppercase from VALID_EXCHANGES.
+    - timeframe (str): Timeframe for the indicator snapshot. One of: 1m, 5m, 15m, 30m, 1h, 2h, 4h, 1d, 1w, 1M.
+
+    Returns
+    - success (bool): Whether the fetch succeeded.
+    - data (dict): Mapping of indicator name -> current value (when success=True).
+    - message (str): Error message when success=False.
+
+    Example
+    - POST /all-indicators with {"symbol": "NIFTY", "exchange": "NSE", "timeframe": "1m"}
+
+    Note: The underlying scraper requires TRADINGVIEW_COOKIE environment variable 
+    to be set for authentication. JWT tokens are automatically generated from cookies.
     """
     # Handle cookie override
     original_cookie = os.environ.get("TRADINGVIEW_COOKIE")
@@ -348,7 +401,7 @@ async def get_all_indicators_endpoint(request: AllIndicatorsRequest):
 
     try:
         # Validate parameters using centralized validators
-        from tradingview_mcp.validators import validate_exchange, validate_timeframe, validate_symbol
+        from src.tradingview_mcp.validators import validate_exchange, validate_timeframe, validate_symbol
 
 
         exchange = validate_exchange(request.exchange)
@@ -379,13 +432,31 @@ async def get_all_indicators_endpoint(request: AllIndicatorsRequest):
 @app.post("/ideas")
 async def get_ideas_endpoint(request: IdeasRequest):
     """
-    Scrape trading ideas from TradingView.
+    Scrape trading ideas from TradingView for a specific symbol.
 
-    This endpoint mirrors the get_ideas MCP tool.
-    Accepts IdeasRequest JSON and returns TOON-encoded ideas.
+    Fetches trading ideas related to a trading symbol from TradingView. Returns structured idea data including title, author, publication time, and idea content.
+
+    Parameters:
+    - symbol (str): Trading symbol/ticker (e.g., 'NIFTY', 'AAPL', 'BTCUSD').
+    - startPage (int): Starting page number for scraping ideas.
+    - endPage (int): Ending page number for scraping ideas. Must be >= startPage.
+    - sort (str): Sorting order for ideas. Options: 'popular' or 'recent'.
 
     Returns:
-    - TOON-encoded dict with success, ideas, count, message
+    - success (bool): Whether the scrape was successful.
+    - ideas (list): List of scraped ideas with details.
+    - count (int): Number of ideas scraped.
+    - message (str): Error message if scrape failed.
+
+    Example usage:
+    - Get popular ideas for NIFTY from page 1 to 2:
+      POST /ideas with {"symbol": "NIFTY", "startPage": 1, "endPage": 2, "sort": "popular"}
+
+    Note :
+    - to avoid extra time for sraping recomanded 1-3 page for latest and popular ideas.
+
+    Note: The function requires TRADINGVIEW_COOKIE environment variable to be set 
+    for authentication. JWT tokens are automatically generated from cookies as needed.
     """
     # Handle cookie override
     original_cookie = os.environ.get("TRADINGVIEW_COOKIE")
@@ -445,13 +516,35 @@ async def get_ideas_endpoint(request: IdeasRequest):
 @app.post("/option-chain-greeks")
 async def get_option_chain_greeks_endpoint(request: OptionChainGreeksRequest):
     """
-    Get option chain with full Greeks and analytics.
+Fetches real-time TradingView option chain with FULL Greeks (delta, gamma, theta, vega, rho),
+IV (overall/bid/ask), bid/ask/theo prices, intrinsic/time values for CALL/PUT at key strikes.
 
-    This endpoint mirrors the get_option_chain_greeks MCP tool.
-    Accepts OptionChainGreeksRequest JSON and returns TOON-encoded option data.
+**Structure (per expiry):**
+- spot_price: Current underlying price
+- itm_strikes: List[<top_n> strikes < spot] with call/put details
+- otm_strikes: List[<top_n> strikes >= spot] with call/put details
+- analytics: atm_strike, total_call_delta, total_put_delta, net_delta, total_strikes
 
-    Returns:
-    - TOON-encoded dict with success, spot_price, expiry data, strikes, analytics
+**Per option details:**
+```
+{
+  'symbol': 'NSE:NIFTY251104C25700',
+  'bid': 175.5, 'ask': 178.0, 'theo_price': 176.75,
+  'intrinsic_value': 177.85, 'time_value': -1.10,
+  'delta': 0.7547, 'gamma': 0.0002, 'theta': -12.45,
+  'vega': 15.32, 'rho': 8.21,
+  'iv': 0.0834, 'bid_iv': 0.0831, 'ask_iv': 0.0837
+}
+```
+
+**Returns:** TOON-encoded dict {success, spot_price, expiry/data, strikes, analytics}
+
+**Examples:**
+- Latest expiry, 10 strikes/side: POST /option-chain-greeks with {"symbol": "NIFTY", "exchange": "NSE", "expiry_date": "latest", "top_n": 10}
+- Specific expiry: POST /option-chain-greeks with {"symbol": "NIFTY", "exchange": "NSE", "expiry_date": 20251202, "top_n": 5}
+- All expiries: POST /option-chain-greeks with {"symbol": "NIFTY", "exchange": "NSE", "expiry_date": null, "top_n": 3}
+
+**Use cases:** Build straddles/strangles, delta-hedge, IV crush trades, gamma scalps, spot support levels.
     """
     # Handle cookie override
     original_cookie = os.environ.get("TRADINGVIEW_COOKIE")
@@ -469,7 +562,7 @@ async def get_option_chain_greeks_endpoint(request: OptionChainGreeksRequest):
 
 
         # Validate parameters
-        from tradingview_mcp.validators import validate_exchange, validate_symbol
+        from src.tradingview_mcp.validators import validate_exchange, validate_symbol
 
         exchange = validate_exchange(request.exchange)
         symbol = validate_symbol(request.symbol)
@@ -539,7 +632,7 @@ async def root():
         "message": "TradingView HTTP API Server",
         "version": "1.0.0",
         "servers":[
-            {"url": "https://4eb70c744992.ngrok-free.app"}
+            {"url": os.getenv("VERCEL_URL", "https://tradingview-mcp.vercel.app/")}
         ],
         "endpoints": [
             "/historical-data",

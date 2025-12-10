@@ -26,3 +26,4 @@ debug_result.json
 /chat
 .github
 .vscode
+.vercel

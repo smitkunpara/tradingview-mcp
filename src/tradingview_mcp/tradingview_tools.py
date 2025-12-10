@@ -16,16 +16,16 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import contextlib
 import io
 
-from tradingview_mcp.validators import (
+from .validators import (
     validate_exchange, validate_timeframe, validate_news_provider,
     validate_area, validate_indicators, validate_symbol, validate_story_paths,
     ValidationError
 )
-from tradingview_mcp.utils import (
+from .utils import (
     merge_ohlc_with_indicators, clean_for_json,
     extract_news_body
 )
-from tradingview_mcp.auth import extract_jwt_token, get_token_info
+from .auth import extract_jwt_token, get_token_info
 from dotenv import load_dotenv
 load_dotenv()
 

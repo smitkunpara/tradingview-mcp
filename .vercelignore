@@ -1,0 +1,27 @@
+# Additional files to ignore during Vercel deployment
+# Vercel automatically ignores many common files/folders
+
+# Project config files
+pyproject.toml
+uv.lock
+
+# MCP stdio server (not needed for HTTP API)
+src/tradingview_mcp/main.py
+
+# Sensitive files
+.env
+.env.example
+
+# Documentation
+LICENSE
+README.md
+
+# Dot folders
+.github/
+.vscode/
+.venv/
+.python-version
+.kilocode/
+
+# files
+deploy.py
