@@ -1,54 +1,15 @@
-"""
-HTTP server for TradingView data scraping.
-Provides REST API endpoints for fetching historical data, news headlines, news content, indicators, ideas, and option chains.
-This server exposes the same functionality as the MCP server in main.py, but over HTTP for remote access.
-
-
-The server uses FastAPI to create RESTful endpoints that mirror the MCP tools.
-Each endpoint accepts JSON payloads with the same parameters as the corresponding MCP tool,
-and returns the same TOON-encoded response data for consistency.
-
-
-Environment Variables:
-- TRADINGVIEW_COOKIE: Required for authentication with TradingView APIs. Set this in your .env file.
-
-
-Dependencies:
-- fastapi: Web framework for building the API
-- uvicorn: ASGI server to run the FastAPI app
-- pydantic: Data validation and serialization
-- python-dotenv: Load environment variables from .env file
-- toon: Efficient data encoding for responses
-- Internal modules: tradingview_tools, validators
-
-
-Usage:
-Run this script directly: python http_main.py
-The server will start on http://localhost:8000 by default.
-Use tools like curl or Postman to interact with the endpoints.
-
-
-API Endpoints:
-- POST /historical-data: Fetch historical OHLCV data with indicators
-- POST /news-headlines: Get latest news headlines for a symbol
-- POST /news-content: Fetch full content of news articles
-- POST /all-indicators: Get current values for all technical indicators
-- POST /ideas: Scrape trading ideas from TradingView
-- POST /option-chain-greeks: Get option chain with Greeks and analytics
-
-
-All endpoints return TOON-encoded JSON responses for token efficiency, same as MCP tools.
-"""
-
-
 from typing import Annotated, List, Optional, Literal, Union
 from pydantic import Field, BaseModel
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, Security
+from fastapi.security import APIKeyHeader
+from fastapi.middleware.cors import CORSMiddleware  # <--- ADD THIS IMPORT
 from dotenv import load_dotenv
 import uvicorn
 import json
 import os
 from toon import encode as toon_encode
+
+from src.tradingview_mcp.config import settings  # <--- IMPORT THIS
 
 
 from src.tradingview_mcp.tradingview_tools import (
@@ -70,6 +31,23 @@ from src.tradingview_mcp.validators import (
 load_dotenv()
 
 
+# Define header schemes
+admin_header_scheme = APIKeyHeader(name="X-Admin-Key", auto_error=False)
+client_header_scheme = APIKeyHeader(name="X-Client-Key", auto_error=False)
+
+async def verify_admin(key: str = Security(admin_header_scheme)):
+    """Only allows access if X-Admin-Key matches .env"""
+    if key != settings.ADMIN_API_KEY:
+        raise HTTPException(status_code=403, detail="Unauthorized: Invalid Admin Key")
+    return key
+
+async def verify_client(key: str = Security(client_header_scheme)):
+    """Only allows access if X-Client-Key matches .env"""
+    if key != settings.CLIENT_API_KEY:
+        raise HTTPException(status_code=403, detail="Unauthorized: Invalid Client Key")
+    return key
+
+
 # Initialize FastAPI application
 vercel_backend_url = os.getenv("VERCEL_URL",None)
 if vercel_backend_url:
@@ -80,6 +58,15 @@ app = FastAPI(
     description="REST API for TradingView data scraping tools",
     version="1.0.0",
     servers=[{"url": vercel_backend_url}] if vercel_backend_url else None
+)
+
+# Add CORS middleware to handle cross-origin requests from the Chrome extension
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins for Chrome extension
+    allow_credentials=True,
+    allow_methods=["*"],  # Allow all HTTP methods
+    allow_headers=["*"]   # Allow all headers including X-Admin-Key
 )
 
 
@@ -193,31 +180,12 @@ class OptionChainGreeksRequest(BaseModel):
 # Each endpoint corresponds to an MCP tool, with the same logic and error handling
 
 
-@app.post("/historical-data")
+@app.post("/historical-data", dependencies=[Depends(verify_client)])
 async def get_historical_data_endpoint(request: HistoricalDataRequest):
     """
     Fetch historical OHLCV data with technical indicators from TradingView.
-    
-    Retrieves historical price data (Open, High, Low, Close, Volume) for any
-    trading instrument along with specified technical indicators. Data includes
-    timestamps converted to Indian Standard Time (IST).
-    
-    Returns a dictionary containing:
-    - success: Boolean indicating if operation succeeded
-    - data: List of OHLCV candles with indicator values
-    - errors: List of any errors or warnings
-    - metadata: Information about the request
-    
-    Example usage:
-    - Get last 100 1-minute candles for BTCUSD with RSI:
-      POST /historical-data with {"exchange": "BINANCE", "symbol": "BTCUSD", "timeframe": "1m", "numb_price_candles": 100, "indicators": ["RSI"]}
-    
-    Note: Requires active internet connection to fetch data from TradingView.
+    Returns candles with timestamps in IST. Requires internet connection.
     """
-    # Handle cookie override
-    original_cookie = os.environ.get("TRADINGVIEW_COOKIE")
-    if request.cookie:
-        os.environ["TRADINGVIEW_COOKIE"] = request.cookie
 
     try:
         # Validate numb_price_candles parameter
@@ -237,11 +205,6 @@ async def get_historical_data_endpoint(request: HistoricalDataRequest):
             numb_price_candles=numb_price_candles,
             indicators=request.indicators
         )
-
-        #cleart the export folder
-        if os.path.exists("export"):
-            import shutil
-            shutil.rmtree("export")
         
         # Encode result in TOON format for efficiency
         toon_data = toon_encode(result)
@@ -260,42 +223,20 @@ async def get_historical_data_endpoint(request: HistoricalDataRequest):
                 os.environ.pop("TRADINGVIEW_COOKIE", None)
 
 
-@app.post("/news-headlines")
+@app.post("/news-headlines", dependencies=[Depends(verify_client)])
 async def get_news_headlines_endpoint(request: NewsHeadlinesRequest):
     """
     Scrape latest news headlines from TradingView for a specific symbol.
-    
-    Fetches recent news headlines related to a trading symbol from various
-    news providers. Returns structured headline data including title, source,
-    publication time, and story paths for fetching full content.
-    
-    Returns a list of headlines, each containing:
-    - title: Headline text
-    - provider: News source
-    - published: Publication timestamp
-    - source: Original source URL
-    - storyPath: Path for fetching full article content
-    
-    Example usage:
-    - Get all news for NIFTY from NSE: 
-      POST /news-headlines with {"symbol": "NIFTY", "exchange": "NSE", "provider": "all", "area": "asia"}
-    - Get crypto news for Bitcoin:
-      POST /news-headlines with {"symbol": "BTC", "provider": "coindesk", "area": "world"}
-    
-    Use the storyPath from results with /news-content to fetch full articles.
+    Returns headlines with title, provider, and story paths for full content.
     """
-    # Handle cookie override
-    original_cookie = os.environ.get("TRADINGVIEW_COOKIE")
-    if request.cookie:
-        os.environ["TRADINGVIEW_COOKIE"] = request.cookie
-
     try:
-        # Call the core function
+        # Call the core function - pass cookie directly
         headlines = fetch_news_headlines(
             symbol=request.symbol,
             exchange=request.exchange,
             provider=request.provider,
-            area=request.area
+            area=request.area,
+            cookie=request.cookie
         )
 
         if not headlines:
@@ -310,47 +251,17 @@ async def get_news_headlines_endpoint(request: NewsHeadlinesRequest):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch news: {str(e)}")
-    finally:
-        # Restore original cookie
-        if request.cookie:
-            if original_cookie is not None:
-                os.environ["TRADINGVIEW_COOKIE"] = original_cookie
-            else:
-                os.environ.pop("TRADINGVIEW_COOKIE", None)
 
 
-@app.post("/news-content")
+@app.post("/news-content", dependencies=[Depends(verify_client)])
 async def get_news_content_endpoint(request: NewsContentRequest):
     """
     Fetch full news article content using story paths from headlines.
-    
-    Retrieves the complete article text for news stories using the story paths
-    obtained from /news-headlines. Processes multiple articles in a single
-    request and extracts the main text content.
-    
-    Returns a list of articles, each containing:
-    - success: Whether content was fetched successfully
-    - title: Article title
-    - body: Full article text content
-    - story_path: Original story path used
-    - error: Error message if fetch failed (only on failure)
-    
-    Example usage:
-    1. First get headlines: POST /news-headlines with {"symbol": "AAPL"}
-    2. Extract story paths from response
-    3. Get full content: POST /news-content with {"story_paths": ["/news/story1", "/news/story2"]}
-    
-    Note: Some articles may fail to load due to source restrictions.
-    The function will still return partial results for successful fetches.
+    Returns article title and body text. May return partial results.
     """
-    # Handle cookie override
-    original_cookie = os.environ.get("TRADINGVIEW_COOKIE")
-    if request.cookie:
-        os.environ["TRADINGVIEW_COOKIE"] = request.cookie
-
     try:
-        # Call the core function
-        articles = fetch_news_content(request.story_paths)
+        # Call the core function - pass cookie directly
+        articles = fetch_news_content(request.story_paths, cookie=request.cookie)
 
         # Encode in TOON format
         toon_data = toon_encode({"articles": articles})
@@ -360,45 +271,14 @@ async def get_news_content_endpoint(request: NewsContentRequest):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch news content: {str(e)}")
-    finally:
-        # Restore original cookie
-        if request.cookie:
-            if original_cookie is not None:
-                os.environ["TRADINGVIEW_COOKIE"] = original_cookie
-            else:
-                os.environ.pop("TRADINGVIEW_COOKIE", None)
 
 
-@app.post("/all-indicators")
+@app.post("/all-indicators", dependencies=[Depends(verify_client)])
 async def get_all_indicators_endpoint(request: AllIndicatorsRequest):
     """
     Return current values for all available technical indicators for a symbol.
-
-    This tool calls the internal indicators scraper and returns a dictionary of
-    current indicator values (a snapshot). It is designed to provide only the
-    latest/current values (not historical series).
-
-    Parameters
-    - symbol (str): Trading symbol, e.g. 'NIFTY', 'AAPL'.
-    - exchange (str): Exchange name, e.g. 'NSE'. Use uppercase from VALID_EXCHANGES.
-    - timeframe (str): Timeframe for the indicator snapshot. One of: 1m, 5m, 15m, 30m, 1h, 2h, 4h, 1d, 1w, 1M.
-
-    Returns
-    - success (bool): Whether the fetch succeeded.
-    - data (dict): Mapping of indicator name -> current value (when success=True).
-    - message (str): Error message when success=False.
-
-    Example
-    - POST /all-indicators with {"symbol": "NIFTY", "exchange": "NSE", "timeframe": "1m"}
-
-    Note: The underlying scraper requires TRADINGVIEW_COOKIE environment variable 
-    to be set for authentication. JWT tokens are automatically generated from cookies.
+    Provides latest snapshot, not historical series. Requires TRADINGVIEW_COOKIE.
     """
-    # Handle cookie override
-    original_cookie = os.environ.get("TRADINGVIEW_COOKIE")
-    if request.cookie:
-        os.environ["TRADINGVIEW_COOKIE"] = request.cookie
-
     try:
         # Validate parameters using centralized validators
         from src.tradingview_mcp.validators import validate_exchange, validate_timeframe, validate_symbol
@@ -420,49 +300,14 @@ async def get_all_indicators_endpoint(request: AllIndicatorsRequest):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
-    finally:
-        # Restore original cookie
-        if request.cookie:
-            if original_cookie is not None:
-                os.environ["TRADINGVIEW_COOKIE"] = original_cookie
-            else:
-                os.environ.pop("TRADINGVIEW_COOKIE", None)
 
 
-@app.post("/ideas")
+@app.post("/ideas", dependencies=[Depends(verify_client)])
 async def get_ideas_endpoint(request: IdeasRequest):
     """
     Scrape trading ideas from TradingView for a specific symbol.
-
-    Fetches trading ideas related to a trading symbol from TradingView. Returns structured idea data including title, author, publication time, and idea content.
-
-    Parameters:
-    - symbol (str): Trading symbol/ticker (e.g., 'NIFTY', 'AAPL', 'BTCUSD').
-    - startPage (int): Starting page number for scraping ideas.
-    - endPage (int): Ending page number for scraping ideas. Must be >= startPage.
-    - sort (str): Sorting order for ideas. Options: 'popular' or 'recent'.
-
-    Returns:
-    - success (bool): Whether the scrape was successful.
-    - ideas (list): List of scraped ideas with details.
-    - count (int): Number of ideas scraped.
-    - message (str): Error message if scrape failed.
-
-    Example usage:
-    - Get popular ideas for NIFTY from page 1 to 2:
-      POST /ideas with {"symbol": "NIFTY", "startPage": 1, "endPage": 2, "sort": "popular"}
-
-    Note :
-    - to avoid extra time for sraping recomanded 1-3 page for latest and popular ideas.
-
-    Note: The function requires TRADINGVIEW_COOKIE environment variable to be set 
-    for authentication. JWT tokens are automatically generated from cookies as needed.
+    Returns ideas with title, author, and content. Supports pagination and sorting.
     """
-    # Handle cookie override
-    original_cookie = os.environ.get("TRADINGVIEW_COOKIE")
-    if request.cookie:
-        os.environ["TRADINGVIEW_COOKIE"] = request.cookie
-
     try:
         # Validate startPage
         try:
@@ -471,7 +316,6 @@ async def get_ideas_endpoint(request: IdeasRequest):
                 raise ValidationError(f"startPage must be between 1 and 10, got {startPage}")
         except ValueError:
             raise ValidationError("startPage must be a valid integer")
-
 
         # Validate endPage
         try:
@@ -483,17 +327,16 @@ async def get_ideas_endpoint(request: IdeasRequest):
         except ValueError:
             raise ValidationError("endPage must be a valid integer")
 
-
         # Validate symbol
         symbol = validate_symbol(request.symbol)
 
-
-        # Call the core function
+        # Call the core function - pass cookie directly
         result = fetch_ideas(
             symbol=symbol,
             startPage=startPage,
             endPage=endPage,
-            sort=request.sort
+            sort=request.sort,
+            cookie=request.cookie
         )
 
 
@@ -504,53 +347,14 @@ async def get_ideas_endpoint(request: IdeasRequest):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
-    finally:
-        # Restore original cookie
-        if request.cookie:
-            if original_cookie is not None:
-                os.environ["TRADINGVIEW_COOKIE"] = original_cookie
-            else:
-                os.environ.pop("TRADINGVIEW_COOKIE", None)
 
 
-@app.post("/option-chain-greeks")
+@app.post("/option-chain-greeks", dependencies=[Depends(verify_client)])
 async def get_option_chain_greeks_endpoint(request: OptionChainGreeksRequest):
     """
-Fetches real-time TradingView option chain with FULL Greeks (delta, gamma, theta, vega, rho),
-IV (overall/bid/ask), bid/ask/theo prices, intrinsic/time values for CALL/PUT at key strikes.
-
-**Structure (per expiry):**
-- spot_price: Current underlying price
-- itm_strikes: List[<top_n> strikes < spot] with call/put details
-- otm_strikes: List[<top_n> strikes >= spot] with call/put details
-- analytics: atm_strike, total_call_delta, total_put_delta, net_delta, total_strikes
-
-**Per option details:**
-```
-{
-  'symbol': 'NSE:NIFTY251104C25700',
-  'bid': 175.5, 'ask': 178.0, 'theo_price': 176.75,
-  'intrinsic_value': 177.85, 'time_value': -1.10,
-  'delta': 0.7547, 'gamma': 0.0002, 'theta': -12.45,
-  'vega': 15.32, 'rho': 8.21,
-  'iv': 0.0834, 'bid_iv': 0.0831, 'ask_iv': 0.0837
-}
-```
-
-**Returns:** TOON-encoded dict {success, spot_price, expiry/data, strikes, analytics}
-
-**Examples:**
-- Latest expiry, 10 strikes/side: POST /option-chain-greeks with {"symbol": "NIFTY", "exchange": "NSE", "expiry_date": "latest", "top_n": 10}
-- Specific expiry: POST /option-chain-greeks with {"symbol": "NIFTY", "exchange": "NSE", "expiry_date": 20251202, "top_n": 5}
-- All expiries: POST /option-chain-greeks with {"symbol": "NIFTY", "exchange": "NSE", "expiry_date": null, "top_n": 3}
-
-**Use cases:** Build straddles/strangles, delta-hedge, IV crush trades, gamma scalps, spot support levels.
+    Fetches real-time option chain with full Greeks, IV, and analytics.
+    Returns strikes with bid/ask, theo prices, delta/gamma/theta/vega/rho, and IV data.
     """
-    # Handle cookie override
-    original_cookie = os.environ.get("TRADINGVIEW_COOKIE")
-    if request.cookie:
-        os.environ["TRADINGVIEW_COOKIE"] = request.cookie
-
     try:
         # Validate top_n
         try:
@@ -583,16 +387,9 @@ IV (overall/bid/ask), bid/ask/theo prices, intrinsic/time values for CALL/PUT at
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
-    finally:
-        # Restore original cookie
-        if request.cookie:
-            if original_cookie is not None:
-                os.environ["TRADINGVIEW_COOKIE"] = original_cookie
-            else:
-                os.environ.pop("TRADINGVIEW_COOKIE", None)
 
 
-@app.get("/privacy-policy")
+@app.get("/privacy-policy", include_in_schema=False)
 async def get_privacy_policy():
     """
     Privacy Policy endpoint.
@@ -621,7 +418,7 @@ async def get_privacy_policy():
     }
 
 
-@app.get("/")
+@app.get("/", include_in_schema=False)
 async def root():
     """
     Root endpoint providing API information.
@@ -645,12 +442,69 @@ async def root():
         ]
     }
 
+@app.post("/update-cookies", include_in_schema=False, dependencies=[Depends(verify_admin)])
+async def update_cookies(request: dict):
+    """
+    Receives raw cookies from extension, validates them, and updates server config.
+    """
+    try:
+        raw_cookies = request.get("cookies", [])
+        source = request.get("source", "unknown")
+        
+        if not raw_cookies:
+            return {"success": False, "message": "No cookies provided in payload"}
+
+        print(f"📥 Received {len(raw_cookies)} cookies from {source}")
+
+        # 1. CONSTRUCT COOKIE STRING
+        # We accept all cookies provided by the extension to ensure we have the full session
+        cookie_parts = []
+        for c in raw_cookies:
+            # Basic cleaning
+            name = c.get('name')
+            value = c.get('value')
+            if name and value:
+                cookie_parts.append(f"{name}={value}")
+        
+        new_cookie_string = "; ".join(cookie_parts)
+        print("🕵️ Verifying new session...")
+        
+        
+        try:
+            # Attempt to fetch a simple data point (like ideas or indicators)
+            # This triggers the JWT extraction and HTTP request using the new cookie
+            test_result = fetch_ideas("BTCUSD", startPage=1, endPage=1, cookie=new_cookie_string)
+            
+            # Check if the result indicates a success (fetched data)
+            # If the cookie is bad, fetch_ideas typically returns empty or raises an error in auth
+            if isinstance(test_result, dict) and test_result.get('success') is False:
+                 raise ValueError("Validation request returned failure.")
+            
+            print("✅ Cookie Verification Successful!")
+            # Update the server's cookie setting
+            settings.update_cookie(new_cookie_string)
+            return {
+                "success": True, 
+                "message": "Cookies verified and updated successfully.",
+                "count": len(cookie_parts)
+            }
+
+        except Exception as e:
+            print(f"❌ Verification Failed: {str(e)}")
+            return {
+                "success": False, 
+                "message": f"Cookie validation failed: {str(e)}. Reverted to previous session."
+            }
+
+    except Exception as e:
+        return {"success": False, "message": f"Server error processing cookies: {str(e)}"}
+
 
 def main():
     """
     Main function to run the HTTP server.
     
-    Starts the uvicorn server on host 0.0.0.0 and port 8000.
+    Starts the uvicorn server on host 0.0.0.0 and port 4589.
     This allows remote access to the API.
     """
     print("🚀 Starting TradingView HTTP API Server...")
@@ -663,12 +517,12 @@ def main():
     print("   - POST /option-chain-greeks: Get detailed option chain with full Greeks, IV & analytics")
     print("   - GET /privacy-policy: View privacy policy and disclaimer")
     print("   - GET /: API information")
-    print("\n🌐 Server running on http://localhost:8000")
-    print("📖 API docs available at http://localhost:8000/docs")
+    print("\n🌐 Server running on http://localhost:4589")
+    print("📖 API docs available at http://localhost:4589/docs")
     print("\n⚡ Server is ready!")
     
     # Run the server
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=4589)
 
 
 if __name__ == "__main__":

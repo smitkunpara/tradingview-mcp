@@ -11,6 +11,8 @@ import os
 from typing import Optional, Dict
 #load dotenv
 from dotenv import load_dotenv
+from .config import settings
+
 load_dotenv()
 
 def extract_jwt_token() -> Optional[str]:
@@ -24,7 +26,7 @@ def extract_jwt_token() -> Optional[str]:
         ValueError: If TRADINGVIEW_COOKIE is not set or token extraction fails
     """
     # Check if cookies are set
-    cookie = os.getenv("TRADINGVIEW_COOKIE")
+    cookie = settings.TRADINGVIEW_COOKIE
     if not cookie:
         raise ValueError(
             "Account is not connected with MCP. Please set TRADINGVIEW_COOKIE "
@@ -32,7 +34,7 @@ def extract_jwt_token() -> Optional[str]:
         )
     
     # Get URL from environment or use default
-    url = os.getenv("TRADINGVIEW_URL")
+    url = settings.TRADINGVIEW_URL
     if not url:
         raise ValueError(
             "TRADINGVIEW_URL environment variable is not set. Please set it to a valid TradingView chart URL."
@@ -40,8 +42,7 @@ def extract_jwt_token() -> Optional[str]:
     
     headers = {
         "Cookie": cookie,
-        "User-Agent": os.getenv("TRADINGVIEW_USER_AGENT", 
-                                "Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0"),
+        "User-Agent": settings.USER_AGENT, # <--- CHANGED
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.5",
         "Accept-Encoding": "gzip, deflate, br",

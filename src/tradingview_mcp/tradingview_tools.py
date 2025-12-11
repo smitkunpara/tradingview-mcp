@@ -26,6 +26,7 @@ from .utils import (
     extract_news_body
 )
 from .auth import extract_jwt_token, get_token_info
+from .config import settings
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -160,25 +161,11 @@ def fetch_historical_data(
         }
 
     try:
-        # Check if cookies are set
-        if not os.getenv("TRADINGVIEW_COOKIE"):
-            raise ValidationError(
-                "Account is not connected with MCP. Please set TRADINGVIEW_COOKIE "
-                "environment variable to connect your account."
-            )
-        
-        # Get valid JWT token
-        try:
-            jwt_token = get_valid_jwt_token()
-        except ValueError as e:
-            raise ValidationError(str(e))
-        
-        # If no indicators requested, just fetch once
+        # If no indicators requested, just fetch without cookies/token
         if not indicator_ids:
             streamer = Streamer(
-                export_result=True,
-                export_type='json',
-                websocket_jwt_token=jwt_token
+                export_result=False,
+                export_type='json'
             )
 
             # Capture stdout to prevent print statements from corrupting JSON
@@ -204,6 +191,18 @@ def fetch_historical_data(
                 }
             }
 
+        # Check if cookies are set then we can fetch the indicators
+        if not settings.TRADINGVIEW_COOKIE: 
+            raise ValidationError(
+                "Account is not connected with MCP. Please set TRADINGVIEW_COOKIE to fetch indicators. "
+                "environment variable to connect your account."
+            )
+        
+        # Get valid JWT token
+        try:
+            jwt_token = get_valid_jwt_token()
+        except ValueError as e:
+            raise ValidationError(str(e))
         # Batch indicators into groups of 2 (free account limit)
         BATCH_SIZE = 2
         # Create list of tuples: [(indicator_id, version), ...]
@@ -233,7 +232,7 @@ def fetch_historical_data(
 
                 # Create a fresh Streamer per batch
                 batch_streamer = Streamer(
-                    export_result=True,
+                    export_result=False,
                     export_type='json',
                     websocket_jwt_token=batch_token
                 )
@@ -340,7 +339,8 @@ def fetch_news_headlines(
     symbol: str,
     exchange: Optional[str] = None,
     provider: str = "all",
-    area: str = 'asia'
+    area: str = 'asia',
+    cookie: Optional[str] = None
 ) -> List[Dict[str, Any]]:
     """
     Fetch news headlines from TradingView.
@@ -350,6 +350,7 @@ def fetch_news_headlines(
         exchange: Optional exchange name
         provider: News provider or 'all'
         area: Geographical area
+        cookie: Optional cookie string (uses settings if not provided)
         
     Returns:
         List of news headlines
@@ -365,7 +366,11 @@ def fetch_news_headlines(
     area = validate_area(area)
     
     try:
-        news_scraper = NewsScraper(export_result=False, export_type='json')
+        news_scraper = NewsScraper(
+            export_result=False, 
+            export_type='json',
+            cookie=cookie or settings.TRADINGVIEW_COOKIE
+        )
 
         # Capture stdout to prevent print statements from corrupting JSON
         with contextlib.redirect_stdout(io.StringIO()):
@@ -400,12 +405,13 @@ def fetch_news_headlines(
         )
 
 
-def fetch_news_content(story_paths: List[str]) -> List[Dict[str, Any]]:
+def fetch_news_content(story_paths: List[str], cookie: Optional[str] = None) -> List[Dict[str, Any]]:
     """
     Fetch detailed news content using story paths.
     
     Args:
         story_paths: List of story paths from news headlines
+        cookie: Optional cookie string (uses settings if not provided)
         
     Returns:
         List of news articles with content
@@ -416,7 +422,11 @@ def fetch_news_content(story_paths: List[str]) -> List[Dict[str, Any]]:
     # Validate story paths
     story_paths = validate_story_paths(story_paths)
     
-    news_scraper = NewsScraper(export_result=False, export_type='json')
+    news_scraper = NewsScraper(
+        export_result=False, 
+        export_type='json',
+        cookie=cookie or settings.TRADINGVIEW_COOKIE
+    )
     news_content = []
 
     for story_path in story_paths:
@@ -524,7 +534,8 @@ def fetch_ideas(
     startPage: int = 1,
     endPage: int = 1,
     sort: str = 'popular',
-    export_type: str = 'json'
+    export_type: str = 'json',
+    cookie: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Fetch trading ideas for a given symbol using the Ideas scraper.
@@ -534,8 +545,8 @@ def fetch_ideas(
         startPage: Starting page number (>=1)
         endPage: Ending page number (>= startPage)
         sort: 'popular' or 'recent'
-        export_result: Whether to export results (passed to Ideas)
         export_type: Export format for Ideas
+        cookie: Optional cookie string (uses settings if not provided)
 
     Returns:
         Dict with keys: success (bool), ideas (list), count (int), message (str)
@@ -570,7 +581,8 @@ def fetch_ideas(
     try:
         ideas_scraper = Ideas(
             export_result=False,
-            export_type=export_type
+            export_type=export_type,
+            cookie=cookie or settings.TRADINGVIEW_COOKIE
         )
 
         # Capture stdout to prevent print statements from corrupting JSON
@@ -621,7 +633,7 @@ def fetch_option_chain_data(
     import requests
     from http.cookies import SimpleCookie
 
-    cookies_str = os.getenv("TRADINGVIEW_COOKIE")
+    cookies_str = settings.TRADINGVIEW_COOKIE
     cookies = {}
     if cookies_str:
         try:
@@ -718,7 +730,7 @@ def get_current_spot_price(symbol: str, exchange: str) -> Dict[str, Any]:
     import requests
     from http.cookies import SimpleCookie
 
-    cookies_str = os.getenv("TRADINGVIEW_COOKIE")
+    cookies_str = settings.TRADINGVIEW_COOKIE
     cookies = {}
     if cookies_str:
         try:
