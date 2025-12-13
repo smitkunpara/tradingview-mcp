@@ -105,6 +105,7 @@ All endpoints accept JSON requests and return TOON-encoded responses for token e
 - **POST /news-content**: Fetch full content of news articles
 - **POST /all-indicators**: Get current values for all technical indicators
 - **POST /ideas**: Scrape trading ideas from TradingView community
+- **POST /minds**: Get community discussions (Minds) from TradingView
 - **POST /option-chain-greeks**: Get detailed options chain with Greeks and analytics
 - **GET /privacy-policy**: View privacy policy and disclaimer
 - **GET /**: API information and available endpoints
@@ -151,6 +152,11 @@ The server provides the following functionality through both MCP tools and HTTP 
 - **get_ideas / POST /ideas**: Scrape trading ideas from TradingView community
   - Sort by popularity or recency
   - Paginated results
+
+- **get_minds / POST /minds**: Get community discussions from TradingView Minds
+  - Fetches discussions, questions, and sentiment
+  - Returns structured data with author, text, likes, and comments
+  - Supports filtering by symbol and exchange
 
 - **get_option_chain_greeks / POST /option-chain-greeks**: Get detailed options chain with Greeks and analytics
   - Complete Greeks calculation (Delta, Gamma, Theta, Vega, Rho)
