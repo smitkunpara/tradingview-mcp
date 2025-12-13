@@ -8,6 +8,7 @@ from tradingview_scraper.symbols.stream import Streamer
 from tradingview_scraper.symbols.news import NewsScraper
 from tradingview_scraper.symbols.technicals import Indicators
 from tradingview_scraper.symbols.ideas import Ideas
+from tradingview_scraper.symbols.minds import Minds
 import jwt
 import os
 import time
@@ -526,6 +527,74 @@ def fetch_all_indicators(
         return {
             'success': False,
             'message': f'Failed to fetch indicators: {str(e)}'
+        }
+
+
+def fetch_minds(
+    symbol: str,
+    limit: Optional[int] = None,
+    cookie: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Fetch community discussions (minds) for a given symbol from TradingView.
+
+    Args:
+        symbol: Trading symbol with exchange prefix (e.g., 'NASDAQ:AAPL', 'BITSTAMP:BTCUSD')
+        limit: Maximum number of results to retrieve from the first page. If None, fetches all available data
+        cookie: Optional cookie string (uses settings if not provided)
+
+    Returns:
+        Dict with keys: status (str), data (list), total (int), symbol_info (dict), pages (int), error (str)
+
+    Raises:
+        ValidationError: For invalid inputs
+    """
+    # Validate inputs
+    symbol = validate_symbol(symbol)
+
+    # Convert string to int if necessary for limit
+    if limit is not None:
+        try:
+            limit = int(limit)
+            if limit <= 0:
+                raise ValidationError(f"limit must be a positive integer. Got: {limit}")
+        except (ValueError, TypeError):
+            raise ValidationError(
+                f"limit must be a valid positive integer or string that can be converted to integer. Got: {limit}"
+            )
+
+    try:
+        minds_scraper = Minds(
+            export_result=False,
+            export_type='json'
+        )
+
+        # Capture stdout to prevent print statements from corrupting JSON
+        with contextlib.redirect_stdout(io.StringIO()):
+            discussions = minds_scraper.get_minds(
+                symbol=symbol,
+                limit=limit
+            )
+        
+        if discussions.get('status') == 'failed':
+            return {
+                'success': False,
+                "message": discussions.get('error', 'Failed to fetch minds discussions'),
+                "suggestion": "Please verify the symbol format (e.g., 'NASDAQ:AAPL') and try again."
+            }
+        
+        return discussions
+
+    except ValidationError:
+        # Re-raise validation errors so callers can handle them consistently
+        raise
+    except Exception as e:
+        return {
+            'success': False,
+            'status': 'failed',
+            'data': [],
+            'total': 0,
+            'message': f'Failed to fetch minds discussions: {str(e)}'
         }
 
 

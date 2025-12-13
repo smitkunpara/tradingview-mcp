@@ -18,6 +18,7 @@ from src.tradingview_mcp.tradingview_tools import (
     fetch_news_content,
     fetch_all_indicators,
     fetch_ideas,
+    fetch_minds,
     process_option_chain_with_analysis
 )
 from src.tradingview_mcp.validators import (
@@ -155,6 +156,20 @@ class IdeasRequest(BaseModel):
     startPage: Union[int, str] = Field(1, description="Starting page number for scraping ideas. Accepts int or str (e.g., 1 or '1').")
     endPage: Union[int, str] = Field(1, description="Ending page number for scraping ideas. Accepts int or str (e.g., 1 or '1').")
     sort: Literal['popular', 'recent'] = Field('popular', description="Sorting order for ideas. 'popular' for most liked, 'recent' for latest.")
+    cookie: Optional[str] = Field(None, description="TradingView cookie string for authentication")
+
+
+class MindsRequest(BaseModel):
+    """
+    Request model for minds discussions endpoint.
+
+    Attributes:
+    - symbol: Trading symbol with exchange prefix (e.g., 'NASDAQ:AAPL', 'BITSTAMP:BTCUSD'). Max 50 characters.
+    - limit: Optional max number of discussions from first page. Can be int or str.
+    - cookie: TradingView cookie string for authentication (optional, uses env var if not provided).
+    """
+    symbol: str = Field(..., min_length=1, max_length=50, description="Trading symbol with exchange prefix (e.g., 'NASDAQ:AAPL', 'BITSTAMP:BTCUSD', 'NSE:NIFTY'). Required.")
+    limit: Optional[Union[int, str]] = Field(None, description="Maximum number of discussions to retrieve from first page. If None, fetches all available. Accepts int or str (e.g., 100 or '100').")
     cookie: Optional[str] = Field(None, description="TradingView cookie string for authentication")
 
 
@@ -335,7 +350,43 @@ async def get_ideas_endpoint(request: IdeasRequest):
             symbol=symbol,
             startPage=startPage,
             endPage=endPage,
-            sort=request.sort,
+            minds", dependencies=[Depends(verify_client)])
+async def get_minds_endpoint(request: MindsRequest):
+    """
+    Get community discussions (Minds) from TradingView for a specific symbol.
+    Returns structured discussion data with author, text, likes, and comments.
+    """
+    try:
+        # Validate limit
+        limit = None
+        if request.limit is not None:
+            try:
+                limit = int(request.limit) if isinstance(request.limit, str) else request.limit
+                if limit <= 0:
+                    raise ValidationError(f"limit must be a positive integer, got {limit}")
+            except ValueError:
+                raise ValidationError("limit must be a valid integer")
+
+        # Validate symbol
+        symbol = validate_symbol(request.symbol)
+
+        # Call the core function - pass cookie directly
+        result = fetch_minds(
+            symbol=symbol,
+            limit=limit,
+            cookie=request.cookie
+        )
+
+        # Encode in TOON format
+        toon_data = toon_encode(result)
+        return {"data": toon_data}
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+
+
+@app.post("/sort=request.sort,
             cookie=request.cookie
         )
 

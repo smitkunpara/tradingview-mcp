@@ -17,6 +17,7 @@ from .tradingview_tools import (
     fetch_news_content,
     fetch_all_indicators,
     fetch_ideas,
+    fetch_minds,
     process_option_chain_with_analysis
 )
 from .validators import (
@@ -408,6 +409,78 @@ def get_ideas(
 
 
 @mcp.tool
+def get_minds(
+    symbol: Annotated[str, Field(
+        description="Trading symbol with exchange prefix (e.g., 'NASDAQ:AAPL', 'BITSTAMP:BTCUSD', 'NSE:NIFTY'). Required.",
+        min_length=1,
+        max_length=50
+    )],
+    limit: Annotated[Optional[Union[int, str]], Field(
+        description="Maximum number of discussions to retrieve from first page. If None, fetches all available. Accepts int or str (e.g., 100 or '100')."
+    )] = None
+) -> str:
+    """
+    Get community discussions (Minds) from TradingView for a specific symbol.
+
+    Fetches community-generated discussions, questions, and sentiment from TradingView's 
+    Minds feature. Returns structured discussion data including author, text, likes, and comments.
+
+    Parameters:
+    - symbol (str): Trading symbol with exchange prefix (e.g., 'NASDAQ:AAPL', 'BITSTAMP:BTCUSD')
+    - limit (int, optional): Maximum number of results from first page. If None, fetches all available
+
+    Returns a dictionary containing:
+    - status: 'success' or 'failed'
+    - data: List of discussion items with author, text, likes, comments
+    - total: Total number of results retrieved
+    - symbol_info: Information about the symbol
+    - pages: Number of pages retrieved (always 1)
+
+    Example usage:
+    - Get all discussions for Apple: get_minds("NASDAQ:AAPL")
+    - Get 50 discussions for Bitcoin: get_minds("BITSTAMP:BTCUSD", 50)
+
+    Note: Symbol must include exchange prefix (e.g., 'NASDAQ:AAPL', not just 'AAPL')
+    """
+    try:
+        # Validate limit
+        if limit is not None:
+            try:
+                limit = int(limit) if isinstance(limit, str) else limit
+                if limit <= 0:
+                    raise ValidationError(f"limit must be a positive integer, got {limit}")
+            except ValueError:
+                raise ValidationError("limit must be a valid integer")
+
+        # Validate symbol
+        symbol = validate_symbol(symbol)
+
+        result = fetch_minds(
+            symbol=symbol,
+            limit=limit
+        )
+
+        # Encode discussions in TOON format for token efficiency
+        toon_data = toon_encode(result)
+
+        return toon_data
+    except ValidationError as e:
+        return toon_encode({
+            "success": False,
+            "message": str(e),
+            "data": [],
+            "help": "Symbol must include exchange prefix (e.g., 'NASDAQ:AAPL', 'BITSTAMP:BTCUSD')"
+        })
+    except Exception as e:
+        return toon_encode({
+            "success": False,
+            "message": f"Unexpected error: {str(e)}",
+            "data": [],
+            "help": "An unexpected error occurred. Please verify your symbol format and try again."
+        })
+
+
+@mcp.tool
 def get_option_chain_greeks(
     symbol: Annotated[str, Field(
         description="Underlying symbol (e.g., 'NIFTY', 'BANKNIFTY'). Required.",
@@ -511,6 +584,7 @@ def main():
     print("   - get_news_content: Fetch full news articles")
     print("   - get_all_indicators: Get current values for all technical indicators")
     print("   - get_ideas: Get trading ideas from TradingView community")
+    print("   - get_minds: Get community discussions from TradingView Minds")
     print("   - get_option_chain_greeks: Get detailed option chain with full Greeks, IV & analytics")
     print("\n Server is ready!")
     mcp.run()
