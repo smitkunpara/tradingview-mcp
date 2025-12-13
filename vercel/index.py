@@ -1,17 +1,10 @@
-from typing import Annotated, List, Optional, Literal, Union
-from pydantic import Field, BaseModel
 from fastapi import FastAPI, HTTPException, Depends, Security
 from fastapi.security import APIKeyHeader
-from fastapi.middleware.cors import CORSMiddleware  # <--- ADD THIS IMPORT
+from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import uvicorn
-import json
 import os
 from toon import encode as toon_encode
-
-from src.tradingview_mcp.config import settings  # <--- IMPORT THIS
-
-
 from src.tradingview_mcp.tradingview_tools import (
     fetch_historical_data,
     fetch_news_headlines,
@@ -22,15 +15,22 @@ from src.tradingview_mcp.tradingview_tools import (
     process_option_chain_with_analysis
 )
 from src.tradingview_mcp.validators import (
-    VALID_EXCHANGES, VALID_TIMEFRAMES, VALID_NEWS_PROVIDERS,
-    VALID_AREAS, ValidationError, INDICATOR_MAPPING, validate_symbol
+    ValidationError, 
+    validate_symbol,
+    validate_exchange
 )
-
-
-# Load environment variables from .env file
-# This ensures TRADINGVIEW_COOKIE and other secrets are loaded
+from src.tradingview_mcp.config import settings
+from .models import (
+    HistoricalDataRequest,
+    NewsHeadlinesRequest,
+    NewsContentRequest,
+    AllIndicatorsRequest,
+    IdeasRequest,
+    MindsRequest,
+    OptionChainGreeksRequest
+)
+# Load environment variables
 load_dotenv()
-
 
 # Define header schemes
 admin_header_scheme = APIKeyHeader(name="X-Admin-Key", auto_error=False)
@@ -49,11 +49,9 @@ async def verify_client(key: str = Security(client_header_scheme)):
     return key
 
 
-# Initialize FastAPI application
 vercel_backend_url = os.getenv("VERCEL_URL",None)
 if vercel_backend_url:
     print(f"🌐 Vercel backend URL set to: {vercel_backend_url}")
-# This creates the web server instance that will handle HTTP requests
 app = FastAPI(
     title="TradingView HTTP API",
     description="REST API for TradingView data scraping tools",
@@ -71,130 +69,13 @@ app.add_middleware(
 )
 
 
-# Pydantic models for request bodies
-# These define the expected JSON structure for each endpoint's request body
-
-
-class HistoricalDataRequest(BaseModel):
-    """
-    Request model for historical data endpoint.
-
-    Attributes:
-    - exchange: Stock exchange name (e.g., 'NSE', 'NASDAQ', 'BINANCE'). Must be one of the valid exchanges like NSE, NASDAQ, BINANCE... Use uppercase format.
-    - symbol: Trading symbol/ticker (e.g., 'NIFTY', 'AAPL', 'BTCUSD'). Search online for correct symbol format for your exchange.
-    - timeframe: Time interval for each candle. Options: 1m (1 minute), 5m, 15m, 30m, 1h (1 hour), 2h, 4h, 1d (1 day), 1w (1 week), 1M (1 month)
-    - numb_price_candles: Number of historical candles to fetch (1-5000). Accepts int or str (e.g., 100 or '100'). More candles = longer history. E.g., 100 for last 100 periods.
-    - indicators: List of technical indicators to include. Options: RSI, MACD, CCI, BB. Leave empty for no indicators.
-    - cookie: TradingView cookie string for authentication (optional, uses env var if not provided).
-    """
-    exchange: str = Field(..., min_length=2, max_length=30, description=f"Stock exchange name (e.g., 'NSE', 'NASDAQ', 'BINANCE'). Must be one of the valid exchanges like {', '.join(VALID_EXCHANGES[:5])}... Use uppercase format.")
-    symbol: str = Field(..., min_length=1, max_length=20, description="Trading symbol/ticker (e.g., 'NIFTY', 'AAPL', 'BTCUSD'). Search online for correct symbol format for your exchange.")
-    timeframe: Literal['1m', '5m', '15m', '30m', '1h', '2h', '4h', '1d', '1w', '1M'] = Field(..., description="Time interval for each candle. Options: 1m (1 minute), 5m, 15m, 30m, 1h (1 hour), 2h, 4h, 1d (1 day), 1w (1 week), 1M (1 month)")
-    numb_price_candles: Union[int, str] = Field(..., description="Number of historical candles to fetch (1-5000). Accepts int or str (e.g., 100 or '100'). More candles = longer history. E.g., 100 for last 100 periods.")
-    indicators: List[str] = Field(default=[], description=f"List of technical indicators to include. Options: {', '.join(INDICATOR_MAPPING.keys())}. Example: ['RSI', 'MACD', 'CCI', 'BB']. Leave empty for no indicators.")
-    cookie: Optional[str] = Field(None, description="TradingView cookie string for authentication")
-
-
-class NewsHeadlinesRequest(BaseModel):
-    """
-    Request model for news headlines endpoint.
-
-    Attributes:
-    - symbol: Trading symbol for news (e.g., 'NIFTY', 'AAPL'). Max 20 characters.
-    - exchange: Optional exchange filter. Must be in VALID_EXCHANGES if provided.
-    - provider: News provider filter. One of VALID_NEWS_PROVIDERS or 'all'. Default 'all'.
-    - area: Geographical area filter. One of: 'world', 'americas', 'europe', 'asia', 'oceania', 'africa'. Default 'asia'.
-    - cookie: TradingView cookie string for authentication (optional, uses env var if not provided).
-    """
-    symbol: str = Field(..., min_length=1, max_length=20, description="Trading symbol for news (e.g., 'NIFTY', 'AAPL', 'BTC'). Required. Search online for correct symbol.")
-    exchange: Optional[str] = Field(None, min_length=2, max_length=30, description=f"Optional exchange filter. One of: {', '.join(VALID_EXCHANGES)}... Leave empty for all exchanges.")
-    provider: str = Field("all", min_length=3, max_length=20, description=f"News provider filter. Options: {', '.join(VALID_NEWS_PROVIDERS)}... or 'all' for all providers.")
-    area: Literal['world', 'americas', 'europe', 'asia', 'oceania', 'africa'] = Field('asia', description="Geographical area filter for news. Default is 'asia'.")
-    cookie: Optional[str] = Field(None, description="TradingView cookie string for authentication")
-
-
-class NewsContentRequest(BaseModel):
-    """
-    Request model for news content endpoint.
-
-    Attributes:
-    - story_paths: List of story paths from news headlines. Each must start with '/news/'. Max 20 items.
-    - cookie: TradingView cookie string for authentication (optional, uses env var if not provided).
-    """
-    story_paths: List[str] = Field(..., min_items=1, max_items=20, description="List of story paths from news headlines. Each path must start with '/news/'. Get these from get_news_headlines() results.")
-    cookie: Optional[str] = Field(None, description="TradingView cookie string for authentication")
-
-
-class AllIndicatorsRequest(BaseModel):
-    """
-    Request model for all indicators endpoint.
-
-    Attributes:
-    - symbol: Trading symbol/ticker (e.g., 'NIFTY', 'AAPL'). Max 20 characters.
-    - exchange: Stock exchange name. Must be in VALID_EXCHANGES.
-    - timeframe: Time interval for indicator snapshot. One of VALID_TIMEFRAMES. Default '1m'.
-    - cookie: TradingView cookie string for authentication (optional, uses env var if not provided).
-    """
-    symbol: str = Field(..., min_length=1, max_length=20, description="Trading symbol/ticker (e.g., 'NIFTY', 'AAPL', 'BTCUSD'). Required.")
-    exchange: str = Field(..., min_length=2, max_length=30, description=f"Stock exchange name (e.g., 'NSE'). Must be one of the valid exchanges. Valid examples: {', '.join(VALID_EXCHANGES[:5])}... Use uppercase format.")
-    timeframe: Literal['1m', '5m', '15m', '30m', '1h', '2h', '4h', '1d', '1w', '1M'] = Field('1m', description=f"Time interval for indicator snapshot. Valid options: {', '.join(VALID_TIMEFRAMES)}")
-    cookie: Optional[str] = Field(None, description="TradingView cookie string for authentication")
-
-
-class IdeasRequest(BaseModel):
-    """
-    Request model for ideas endpoint.
-
-    Attributes:
-    - symbol: Trading symbol/ticker (e.g., 'NIFTY', 'AAPL'). Max 20 characters.
-    - startPage: Starting page number (1-10). Can be int or str. Default 1.
-    - endPage: Ending page number (1-10, >= startPage). Can be int or str. Default 1.
-    - sort: Sorting order. 'popular' or 'recent'. Default 'popular'.
-    - cookie: TradingView cookie string for authentication (optional, uses env var if not provided).
-    """
-    symbol: str = Field(..., min_length=1, max_length=20, description="Trading symbol/ticker (e.g., 'NIFTY', 'AAPL', 'BTCUSD'). Search online for correct symbol format for your exchange.")
-    startPage: Union[int, str] = Field(1, description="Starting page number for scraping ideas. Accepts int or str (e.g., 1 or '1').")
-    endPage: Union[int, str] = Field(1, description="Ending page number for scraping ideas. Accepts int or str (e.g., 1 or '1').")
-    sort: Literal['popular', 'recent'] = Field('popular', description="Sorting order for ideas. 'popular' for most liked, 'recent' for latest.")
-    cookie: Optional[str] = Field(None, description="TradingView cookie string for authentication")
-
-
-class MindsRequest(BaseModel):
-    """
-    Request model for minds discussions endpoint.
-
-    Attributes:
-    - symbol: Trading symbol/ticker (e.g., 'NIFTY', 'AAPL'). Max 20 characters.
-    - exchange: Stock exchange name. Must be in VALID_EXCHANGES.
-    - limit: Optional max number of discussions from first page. Can be int or str.
-    - cookie: TradingView cookie string for authentication (optional, uses env var if not provided).
-    """
-    symbol: str = Field(..., min_length=1, max_length=20, description="Trading symbol/ticker (e.g., 'NIFTY', 'AAPL', 'BTCUSD'). Required.")
-    exchange: str = Field(..., min_length=2, max_length=30, description=f"Stock exchange name (e.g., 'NSE'). Must be one of the valid exchanges. Valid examples: {', '.join(VALID_EXCHANGES[:5])}... Use uppercase format.")
-    limit: Optional[Union[int, str]] = Field(None, description="Maximum number of discussions to retrieve from first page. If None, fetches all available. Accepts int or str (e.g., 100 or '100').")
-    cookie: Optional[str] = Field(None, description="TradingView cookie string for authentication")
-
-
-class OptionChainGreeksRequest(BaseModel):
-    """
-    Request model for option chain Greeks endpoint.
-
-    Attributes:
-    - symbol: Underlying symbol (e.g., 'NIFTY', 'BANKNIFTY'). Max 20 characters.
-    - exchange: Stock exchange name. Must be in VALID_EXCHANGES.
-    - expiry_date: Optional expiry date. None for all, 'latest' for nearest, or YYYYMMDD int/str for specific.
-    - top_n: Strikes per side (1-20). Can be int or str. Default 5.
-    - cookie: TradingView cookie string for authentication (optional, uses env var if not provided).
-    """
-    symbol: str = Field(..., min_length=1, max_length=20, description="Underlying symbol (e.g., 'NIFTY', 'BANKNIFTY'). Required.")
-    exchange: str = Field(..., min_length=2, max_length=30, description=f"Stock exchange name (e.g., 'NSE'). Must be one of the valid exchanges. Valid examples: {', '.join(VALID_EXCHANGES[:5])}... Use uppercase format.")
-    expiry_date: Optional[Union[int, str]] = Field(None, description="Option expiry date:\n- None (default): ALL expiries grouped by date\n- 'latest': NEAREST expiry only\n- int YYYYMMDD (e.g., 20251202): SPECIFIC expiry")
-    top_n: Union[int, str] = Field(5, description="Strikes per side (ITM below + OTM >= spot). Default 3, max 20.\nE.g., top_n=5 → 5 ITM + 5 OTM = 10 strikes total.")
-    cookie: Optional[str] = Field(None, description="TradingView cookie string for authentication")
-
-
 # API Endpoints
 # Each endpoint corresponds to an MCP tool, with the same logic and error handling
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint - no authentication required"""
+    return {"status": "healthy", "service": "TradingView HTTP API"}
 
 
 @app.post("/historical-data", dependencies=[Depends(verify_client)])
@@ -231,13 +112,6 @@ async def get_historical_data_endpoint(request: HistoricalDataRequest):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
-    finally:
-        # Restore original cookie
-        if request.cookie:
-            if original_cookie is not None:
-                os.environ["TRADINGVIEW_COOKIE"] = original_cookie
-            else:
-                os.environ.pop("TRADINGVIEW_COOKIE", None)
 
 
 @app.post("/news-headlines", dependencies=[Depends(verify_client)])

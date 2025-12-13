@@ -1,6 +1,9 @@
 # Additional files to ignore during Vercel deployment
 # Vercel automatically ignores many common files/folders
 
+# Test files (not needed for deployment)
+tests/
+
 # Project config files
 pyproject.toml
 uv.lock

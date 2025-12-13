@@ -179,11 +179,6 @@ def fetch_historical_data(
                 "environment variable to connect your account."
             )
         
-        # Get valid JWT token
-        try:
-            jwt_token = get_valid_jwt_token()
-        except ValueError as e:
-            raise ValidationError(str(e))
         # Batch indicators into groups of 2 (free account limit)
         BATCH_SIZE = 2
         # Create list of tuples: [(indicator_id, version), ...]
