@@ -411,9 +411,14 @@ def get_ideas(
 @mcp.tool
 def get_minds(
     symbol: Annotated[str, Field(
-        description="Trading symbol with exchange prefix (e.g., 'NASDAQ:AAPL', 'BITSTAMP:BTCUSD', 'NSE:NIFTY'). Required.",
+        description="Trading symbol/ticker (e.g., 'NIFTY', 'AAPL', 'BTCUSD'). Required.",
         min_length=1,
-        max_length=50
+        max_length=20
+    )],
+    exchange: Annotated[str, Field(
+        description=f"Stock exchange name (e.g., 'NSE', 'NASDAQ'). Must be one of the valid exchanges like {', '.join(VALID_EXCHANGES[:5])}... Use uppercase format.",
+        min_length=2,
+        max_length=30
     )],
     limit: Annotated[Optional[Union[int, str]], Field(
         description="Maximum number of discussions to retrieve from first page. If None, fetches all available. Accepts int or str (e.g., 100 or '100')."
@@ -426,7 +431,8 @@ def get_minds(
     Minds feature. Returns structured discussion data including author, text, likes, and comments.
 
     Parameters:
-    - symbol (str): Trading symbol with exchange prefix (e.g., 'NASDAQ:AAPL', 'BITSTAMP:BTCUSD')
+    - symbol (str): Trading symbol/ticker (e.g., 'NIFTY', 'AAPL', 'BTCUSD')
+    - exchange (str): Stock exchange name (e.g., 'NSE', 'NASDAQ')
     - limit (int, optional): Maximum number of results from first page. If None, fetches all available
 
     Returns a dictionary containing:
@@ -437,13 +443,10 @@ def get_minds(
     - pages: Number of pages retrieved (always 1)
 
     Example usage:
-    - Get all discussions for Apple: get_minds("NASDAQ:AAPL")
-    - Get 50 discussions for Bitcoin: get_minds("BITSTAMP:BTCUSD", 50)
-
-    Note: Symbol must include exchange prefix (e.g., 'NASDAQ:AAPL', not just 'AAPL')
+    - Get all discussions for Apple: get_minds("AAPL", "NASDAQ")
+    - Get 50 discussions for Bitcoin: get_minds("BTCUSD", "BITSTAMP", 50)
     """
     try:
-        # Validate limit
         if limit is not None:
             try:
                 limit = int(limit) if isinstance(limit, str) else limit
@@ -452,15 +455,15 @@ def get_minds(
             except ValueError:
                 raise ValidationError("limit must be a valid integer")
 
-        # Validate symbol
         symbol = validate_symbol(symbol)
+        exchange = validate_exchange(exchange)
 
         result = fetch_minds(
             symbol=symbol,
+            exchange=exchange,
             limit=limit
         )
 
-        # Encode discussions in TOON format for token efficiency
         toon_data = toon_encode(result)
 
         return toon_data
@@ -469,14 +472,14 @@ def get_minds(
             "success": False,
             "message": str(e),
             "data": [],
-            "help": "Symbol must include exchange prefix (e.g., 'NASDAQ:AAPL', 'BITSTAMP:BTCUSD')"
+            "help": "Please verify symbol and exchange are valid."
         })
     except Exception as e:
         return toon_encode({
             "success": False,
             "message": f"Unexpected error: {str(e)}",
             "data": [],
-            "help": "An unexpected error occurred. Please verify your symbol format and try again."
+            "help": "An unexpected error occurred. Please verify your inputs and try again."
         })
 
 

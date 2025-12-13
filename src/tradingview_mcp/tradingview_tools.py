@@ -114,26 +114,6 @@ def fetch_historical_data(
     numb_price_candles: int,
     indicators: List[str]
 ) -> Dict[str, Any]:
-    """
-    Fetch historical data from TradingView with indicators using threading.
-    
-    Note: Free TradingView accounts are limited to maximum 2 indicators per request.
-    
-    Args:
-        exchange: Stock exchange name
-        symbol: Trading symbol
-        timeframe: Time interval for candles
-        numb_price_candles: Number of candles to fetch
-        indicators: List of technical indicators (max 2 for free accounts)
-        
-    Returns:
-        Dictionary with merged data and any errors
-        
-    Raises:
-        ValidationError: If validation fails
-        Exception: If data fetching fails
-    """
-    # Validate inputs
     exchange = validate_exchange(exchange)
     symbol = validate_symbol(symbol)
     timeframe = validate_timeframe(timeframe)
@@ -343,24 +323,6 @@ def fetch_news_headlines(
     area: str = 'asia',
     cookie: Optional[str] = None
 ) -> List[Dict[str, Any]]:
-    """
-    Fetch news headlines from TradingView.
-    
-    Args:
-        symbol: Trading symbol
-        exchange: Optional exchange name
-        provider: News provider or 'all'
-        area: Geographical area
-        cookie: Optional cookie string (uses settings if not provided)
-        
-    Returns:
-        List of news headlines
-        
-    Raises:
-        ValidationError: If validation fails
-        Exception: If fetching fails
-    """
-    # Validate inputs
     symbol = validate_symbol(symbol)
     exchange = validate_exchange(exchange) if exchange else None
     provider_param = validate_news_provider(provider)
@@ -407,20 +369,6 @@ def fetch_news_headlines(
 
 
 def fetch_news_content(story_paths: List[str], cookie: Optional[str] = None) -> List[Dict[str, Any]]:
-    """
-    Fetch detailed news content using story paths.
-    
-    Args:
-        story_paths: List of story paths from news headlines
-        cookie: Optional cookie string (uses settings if not provided)
-        
-    Returns:
-        List of news articles with content
-        
-    Raises:
-        ValidationError: If validation fails
-    """
-    # Validate story paths
     story_paths = validate_story_paths(story_paths)
     
     news_scraper = NewsScraper(
@@ -466,29 +414,6 @@ def fetch_all_indicators(
     symbol: str,
     timeframe: str
 ) -> Dict[str, Any]:
-    """
-    Retrieve current values for all available technical indicators from TradingView.
-
-    This function uses the `Indicators` scraper to request the full set of
-    indicator values for the given symbol / exchange / timeframe. It returns
-    a normalized dictionary with a boolean `success` flag and the raw
-    `data` payload (only the current indicator snapshot).
-
-    Args:
-        exchange: Stock exchange name (e.g., 'NSE', 'NASDAQ'). Will be validated.
-        symbol: Trading symbol (e.g., 'NIFTY', 'AAPL'). Required.
-        timeframe: Timeframe string (one of VALID_TIMEFRAMES).
-
-    Returns:
-        A dict with keys:
-        - success: bool
-        - data: dict of indicator current values (if successful)
-        - message: error message when success is False
-
-    Raises:
-        ValidationError: If validation fails for any parameter
-    """
-    # Validate inputs
     exchange = validate_exchange(exchange)
     symbol = validate_symbol(symbol)
     timeframe = validate_timeframe(timeframe)
@@ -532,27 +457,13 @@ def fetch_all_indicators(
 
 def fetch_minds(
     symbol: str,
+    exchange: str,
     limit: Optional[int] = None,
     cookie: Optional[str] = None
 ) -> Dict[str, Any]:
-    """
-    Fetch community discussions (minds) for a given symbol from TradingView.
-
-    Args:
-        symbol: Trading symbol with exchange prefix (e.g., 'NASDAQ:AAPL', 'BITSTAMP:BTCUSD')
-        limit: Maximum number of results to retrieve from the first page. If None, fetches all available data
-        cookie: Optional cookie string (uses settings if not provided)
-
-    Returns:
-        Dict with keys: status (str), data (list), total (int), symbol_info (dict), pages (int), error (str)
-
-    Raises:
-        ValidationError: For invalid inputs
-    """
-    # Validate inputs
+    exchange = validate_exchange(exchange)
     symbol = validate_symbol(symbol)
 
-    # Convert string to int if necessary for limit
     if limit is not None:
         try:
             limit = int(limit)
@@ -569,10 +480,11 @@ def fetch_minds(
             export_type='json'
         )
 
-        # Capture stdout to prevent print statements from corrupting JSON
+        full_symbol = f"{exchange}:{symbol}"
+        
         with contextlib.redirect_stdout(io.StringIO()):
             discussions = minds_scraper.get_minds(
-                symbol=symbol,
+                symbol=full_symbol,
                 limit=limit
             )
         
@@ -580,13 +492,16 @@ def fetch_minds(
             return {
                 'success': False,
                 "message": discussions.get('error', 'Failed to fetch minds discussions'),
-                "suggestion": "Please verify the symbol format (e.g., 'NASDAQ:AAPL') and try again."
+                "suggestion": "Please verify the symbol and exchange."
             }
         
-        return discussions
+        # Return with success flag
+        return {
+            'success': True,
+            **discussions
+        }
 
     except ValidationError:
-        # Re-raise validation errors so callers can handle them consistently
         raise
     except Exception as e:
         return {
@@ -606,24 +521,6 @@ def fetch_ideas(
     export_type: str = 'json',
     cookie: Optional[str] = None
 ) -> Dict[str, Any]:
-    """
-    Fetch trading ideas for a given symbol using the Ideas scraper.
-
-    Args:
-        symbol: Trading symbol/ticker
-        startPage: Starting page number (>=1)
-        endPage: Ending page number (>= startPage)
-        sort: 'popular' or 'recent'
-        export_type: Export format for Ideas
-        cookie: Optional cookie string (uses settings if not provided)
-
-    Returns:
-        Dict with keys: success (bool), ideas (list), count (int), message (str)
-
-    Raises:
-        ValidationError: For invalid inputs
-    """
-    # Validate inputs
     symbol = validate_symbol(symbol)
 
     # Convert string to int if necessary for startPage and endPage
@@ -669,7 +566,11 @@ def fetch_ideas(
                 "message": "No ideas found for the given symbol.",
                 "suggestion" : "Tell user to update the cookies after solving the captcha to access ideas."
             }
-        return ideas
+        return {
+            'success': True,
+            'ideas': ideas,
+            'count': len(ideas)
+        }
 
     except ValidationError:
         # Re-raise validation errors so callers can handle them consistently
@@ -688,17 +589,6 @@ def fetch_option_chain_data(
     exchange: str,
     expiry_date: Optional[int] = None
 ) -> Dict[str, Any]:
-    """
-    Fetch option chain data with Greeks and IV from TradingView.
-    
-    Args:
-        symbol: Underlying symbol (e.g., 'NIFTY', 'BANKNIFTY')
-        exchange: Exchange name (e.g., 'NSE')
-        expiry_date: Optional expiry date in YYYYMMDD format. If None, fetches all expiries.
-    
-    Returns:
-        Dictionary containing option chain data with Greeks
-    """
     import requests
     from http.cookies import SimpleCookie
 
@@ -866,122 +756,18 @@ def process_option_chain_with_analysis(
     expiry_date: Optional[str] = None,
     top_n: int = 5
 ) -> List[Dict[str, Any]]:
-    """
-    Fetch and process option chain data with Greeks (Delta, Gamma, Theta, Vega, Rho), Implied Volatility (IV), 
-    and detailed strike analysis for options trading.
+    exchange = validate_exchange(exchange)
+    symbol = validate_symbol(symbol)
     
-    This function provides comprehensive option chain data including:
-    - Current spot price of the underlying asset
-    - ITM (In-The-Money) strikes: Strikes below the current spot price
-    - OTM (Out-of-The-Money) strikes: Strikes at or above the current spot price
-    - Complete Greeks for both Call and Put options at each strike
-    - Implied Volatility (IV) data: overall IV, bid IV, and ask IV
-    - Intrinsic value and time value calculations
-    - Aggregate analytics: ATM strike, total deltas, net delta exposure
-    
-    Greeks Included:
-    - Delta: Rate of change of option price with respect to underlying price
-    - Gamma: Rate of change of delta with respect to underlying price
-    - Theta: Rate of option price decay with respect to time
-    - Vega: Sensitivity of option price to volatility changes
-    - Rho: Sensitivity of option price to interest rate changes
-    
-    Args:
-        symbol (str): Underlying symbol name (e.g., 'NIFTY', 'BANKNIFTY')
-        exchange (str): Exchange where options are traded (e.g., 'NSE')
-        expiry_date (str|int|None): 
-            - None: Returns data grouped by ALL available expiry dates
-            - "latest": Returns data for the NEAREST upcoming expiry date only
-            - Integer (YYYYMMDD): Returns data for that specific expiry date (e.g., 20251202)
-        top_n (int): Number of strikes to return above and below the spot price. 
-                     Default is 5. Each direction (ITM/OTM) will have top_n strikes.
-    
-    Returns:
-        Dict[str, Any]: Structured dictionary containing:
-        
-        For specific expiry (when expiry_date is an integer or "latest"):
-        {
-            'success': True,
-            'spot_price': float,  # Current spot price of underlying
-            'expiry': int,  # Expiry date in YYYYMMDD format
-            'itm_strikes': [  # Strikes below spot (In-The-Money for Calls)
-                {
-                    'strike': float,
-                    'call': {
-                        'symbol': str,  # TradingView symbol (e.g., 'NSE:NIFTY251202C25700')
-                        'ask': float, 'bid': float,
-                        'delta': float, 'gamma': float, 'theta': float, 'vega': float, 'rho': float,
-                        'iv': float,  # Implied Volatility (overall)
-                        'bid_iv': float, 'ask_iv': float,  # Bid/Ask IV
-                        'theo_price': float,  # Theoretical option price
-                        'intrinsic_value': float, 'time_value': float
-                    },
-                    'put': { ... }  # Same structure as call
-                }
-            ],
-            'otm_strikes': [  # Strikes at or above spot (Out-of-The-Money for Calls)
-                { ... }  # Same structure as itm_strikes
-            ],
-            'analytics': {
-                'atm_strike': float,  # At-The-Money strike (closest to spot)
-                'total_call_delta': float,  # Sum of all call deltas
-                'total_put_delta': float,  # Sum of all put deltas
-                'net_delta': float,  # Net delta exposure (calls + puts)
-                'total_strikes': int  # Total number of strikes available
-            }
-        }
-        
-        For all expiries (when expiry_date is None):
-        {
-            'success': True,
-            'spot_price': float,
-            'expiries': {
-                '20251104': {  # Expiry date as key
-                    'itm_strikes': [...],
-                    'otm_strikes': [...],
-                    'analytics': {...}
-                },
-                '20251202': { ... },
-                ...
-            }
-        }
-        
-        For errors:
-        {
-            'success': False,
-            'message': str  # Error description
-        }
-    
-    Example Usage:
-        # Get latest expiry data with 10 strikes in each direction
-        result = process_option_chain_with_analysis('NIFTY', 'NSE', 'latest', 10)
-        
-        # Get specific expiry
-        result = process_option_chain_with_analysis('NIFTY', 'NSE', 20251202, 5)
-        
-        # Get all expiries
-        result = process_option_chain_with_analysis('NIFTY', 'NSE', None, 5)
-    """
     try:
-        # Convert string to int if necessary for top_n
-        try:
-            top_n = int(top_n)
-        except (ValueError, TypeError):
-            return {
-                'success': False,
-                'message': f"top_n must be a valid integer or string that can be converted to integer. Got: {top_n}"
-            }
-
-        # Handle negative top_n
-        if top_n < 0:
-            return {
-                'success': False,
-                'message': f"Invalid top_n value: {top_n}. Must be a positive integer."
-            }
-
-        # Ensure top_n is at least 1
-        if top_n == 0:
-            top_n = 1
+        top_n = int(top_n)
+    except (ValueError, TypeError):
+        raise ValidationError(f"top_n must be a valid integer. Got: {top_n}")
+    
+    if top_n <= 0 or top_n > 20:
+        raise ValidationError(f"top_n must be between 1 and 20. Got: {top_n}")
+    
+    try:
         
         # Get current spot price
         spot_result = get_current_spot_price(symbol, exchange)

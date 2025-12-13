@@ -164,11 +164,13 @@ class MindsRequest(BaseModel):
     Request model for minds discussions endpoint.
 
     Attributes:
-    - symbol: Trading symbol with exchange prefix (e.g., 'NASDAQ:AAPL', 'BITSTAMP:BTCUSD'). Max 50 characters.
+    - symbol: Trading symbol/ticker (e.g., 'NIFTY', 'AAPL'). Max 20 characters.
+    - exchange: Stock exchange name. Must be in VALID_EXCHANGES.
     - limit: Optional max number of discussions from first page. Can be int or str.
     - cookie: TradingView cookie string for authentication (optional, uses env var if not provided).
     """
-    symbol: str = Field(..., min_length=1, max_length=50, description="Trading symbol with exchange prefix (e.g., 'NASDAQ:AAPL', 'BITSTAMP:BTCUSD', 'NSE:NIFTY'). Required.")
+    symbol: str = Field(..., min_length=1, max_length=20, description="Trading symbol/ticker (e.g., 'NIFTY', 'AAPL', 'BTCUSD'). Required.")
+    exchange: str = Field(..., min_length=2, max_length=30, description=f"Stock exchange name (e.g., 'NSE'). Must be one of the valid exchanges. Valid examples: {', '.join(VALID_EXCHANGES[:5])}... Use uppercase format.")
     limit: Optional[Union[int, str]] = Field(None, description="Maximum number of discussions to retrieve from first page. If None, fetches all available. Accepts int or str (e.g., 100 or '100').")
     cookie: Optional[str] = Field(None, description="TradingView cookie string for authentication")
 
@@ -350,30 +352,7 @@ async def get_ideas_endpoint(request: IdeasRequest):
             symbol=symbol,
             startPage=startPage,
             endPage=endPage,
-            minds", dependencies=[Depends(verify_client)])
-async def get_minds_endpoint(request: MindsRequest):
-    """
-    Get community discussions (Minds) from TradingView for a specific symbol.
-    Returns structured discussion data with author, text, likes, and comments.
-    """
-    try:
-        # Validate limit
-        limit = None
-        if request.limit is not None:
-            try:
-                limit = int(request.limit) if isinstance(request.limit, str) else request.limit
-                if limit <= 0:
-                    raise ValidationError(f"limit must be a positive integer, got {limit}")
-            except ValueError:
-                raise ValidationError("limit must be a valid integer")
-
-        # Validate symbol
-        symbol = validate_symbol(request.symbol)
-
-        # Call the core function - pass cookie directly
-        result = fetch_minds(
-            symbol=symbol,
-            limit=limit,
+            sort=request.sort,
             cookie=request.cookie
         )
 
@@ -386,12 +365,32 @@ async def get_minds_endpoint(request: MindsRequest):
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
 
 
-@app.post("/sort=request.sort,
+@app.post("/minds", dependencies=[Depends(verify_client)])
+async def get_minds_endpoint(request: MindsRequest):
+    """
+    Get community discussions (Minds) from TradingView for a specific symbol.
+    Returns structured discussion data with author, text, likes, and comments.
+    """
+    try:
+        limit = None
+        if request.limit is not None:
+            try:
+                limit = int(request.limit) if isinstance(request.limit, str) else request.limit
+                if limit <= 0:
+                    raise ValidationError(f"limit must be a positive integer, got {limit}")
+            except ValueError:
+                raise ValidationError("limit must be a valid integer")
+
+        symbol = validate_symbol(request.symbol)
+        exchange = validate_exchange(request.exchange)
+
+        result = fetch_minds(
+            symbol=symbol,
+            exchange=exchange,
+            limit=limit,
             cookie=request.cookie
         )
 
-
-        # Encode in TOON format
         toon_data = toon_encode(result)
         return {"data": toon_data}
     except ValidationError as e:
