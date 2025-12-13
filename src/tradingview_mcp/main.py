@@ -501,15 +501,19 @@ def get_option_chain_greeks(
     expiry_date: Annotated[Optional[Union[int, str]], Field(
         description=(
             "Option expiry date:\n"
-            "- None (default): ALL expiries grouped by date\n"
-            "- 'latest': NEAREST expiry only\n"
+            "- 'nearest' (default): NEAREST expiry only\n"
+            "- 'all': ALL expiries grouped by date\n"
             "- int YYYYMMDD (e.g., 20251202): SPECIFIC expiry\n"
         )
-    )] = None,
-    top_n: Annotated[Union[int, str], Field(
+    )] = 'nearest',
+    no_of_ITM: Annotated[Union[int, str], Field(
         description=(
-            "Strikes per side (ITM below + OTM >= spot). Default 3, max 20.\n"
-            "E.g., top_n=5 → 5 ITM + 5 OTM = 10 strikes total."
+            "Number of In-The-Money strikes (below spot for calls, above for puts). Default 5, max 20."
+        )
+    )] = 5,
+    no_of_OTM: Annotated[Union[int, str], Field(
+        description=(
+            "Number of Out-of-The-Money strikes (above spot for calls, below for puts). Default 5, max 20."
         )
     )] = 5
 ) -> str:
@@ -519,9 +523,9 @@ IV (overall/bid/ask), bid/ask/theo prices, intrinsic/time values for CALL/PUT at
 
 **Structure (per expiry):**
 - spot_price: Current underlying price
-- itm_strikes: List[<top_n> strikes < spot] with call/put details
-- otm_strikes: List[<top_n> strikes >= spot] with call/put details
+- data: List of options with call/put details
 - analytics: atm_strike, total_call_delta, total_put_delta, net_delta, total_strikes
+- available_expiries: List of all available expiry dates
 
 **Per option details:**
 ```
@@ -538,19 +542,27 @@ IV (overall/bid/ask), bid/ask/theo prices, intrinsic/time values for CALL/PUT at
 **Returns:** TOON-encoded dict {success, spot_price, expiry/data, strikes, analytics}
 
 **Examples:**
-- Latest expiry, 10 strikes/side: `get_option_chain_greeks('NIFTY', 'NSE', 'latest', 10)`
-- Specific expiry: `get_option_chain_greeks('NIFTY', 'NSE', 20251202, 5)`
-- All expiries: `get_option_chain_greeks('NIFTY', 'NSE', None, 3)`
+- Nearest expiry, 5 ITM + 5 OTM: `get_option_chain_greeks('NIFTY', 'NSE', 'nearest', 5, 5)`
+- Specific expiry: `get_option_chain_greeks('NIFTY', 'NSE', 20251202, 5, 5)`
+- All expiries: `get_option_chain_greeks('NIFTY', 'NSE', 'all', 3, 3)`
+- Custom: `get_option_chain_greeks('NIFTY', 'NSE', 'nearest', 10, 5)` # 10 ITM, 5 OTM
 
 **Use cases:** Build straddles/strangles, delta-hedge, IV crush trades, gamma scalps, spot support levels.
 """
     try:
         try:
-            top_n = int(top_n) if isinstance(top_n, str) else top_n
-            if not (1 <= top_n <= 20):
-                raise ValidationError(f"top_n must be between 1 and 20, got {top_n}")
+            no_of_ITM = int(no_of_ITM) if isinstance(no_of_ITM, str) else no_of_ITM
+            if not (1 <= no_of_ITM <= 20):
+                raise ValidationError(f"no_of_ITM must be between 1 and 20, got {no_of_ITM}")
         except ValueError:
-            raise ValidationError("top_n must be a valid integer")
+            raise ValidationError("no_of_ITM must be a valid integer")
+        
+        try:
+            no_of_OTM = int(no_of_OTM) if isinstance(no_of_OTM, str) else no_of_OTM
+            if not (1 <= no_of_OTM <= 20):
+                raise ValidationError(f"no_of_OTM must be between 1 and 20, got {no_of_OTM}")
+        except ValueError:
+            raise ValidationError("no_of_OTM must be a valid integer")
 
         exchange = validate_exchange(exchange)
         symbol = validate_symbol(symbol)
@@ -559,7 +571,8 @@ IV (overall/bid/ask), bid/ask/theo prices, intrinsic/time values for CALL/PUT at
             symbol=symbol,
             exchange=exchange,
             expiry_date=expiry_date,
-            top_n=top_n
+            no_of_ITM=no_of_ITM,
+            no_of_OTM=no_of_OTM
         )
         # Encode option chain data in TOON format for token efficiency
         toon_data = toon_encode(result)

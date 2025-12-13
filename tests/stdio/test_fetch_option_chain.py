@@ -14,7 +14,7 @@ load_dotenv()
 # Add src directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from tradingview_mcp.tradingview_tools import fetch_option_chain_data
+from tradingview_mcp.tradingview_tools import fetch_option_chain_data, process_option_chain_with_analysis
 from tradingview_mcp.validators import ValidationError
 
 
@@ -32,94 +32,168 @@ class TestFetchOptionChain:
         assert result['success'] == True
         assert 'data' in result
     
-    def test_option_chain_with_analysis(self):
-        """Test option chain with analysis"""
-        result = fetch_option_chain_data(
+    def test_option_chain_with_nearest_expiry(self):
+        """Test option chain with nearest expiry"""
+        result = process_option_chain_with_analysis(
             symbol='NIFTY',
             exchange='NSE',
-            expiry_date=None
+            expiry_date='nearest',
+            no_of_ITM=5,
+            no_of_OTM=5
         )
         
         assert result['success'] == True
+        assert 'spot_price' in result
+        assert 'available_expiries' in result
         assert 'data' in result
+        assert result['requested_ITM'] == 5
+        assert result['requested_OTM'] == 5
+        assert len(result['data']) > 0
+        
+        # Verify we only have one expiry in the data using 'expiration' field
+        expiries_in_data = set(opt.get('expiration') for opt in result['data'] if opt.get('expiration'))
+        
+        assert len(expiries_in_data) == 1, "Should only have one expiry for 'nearest' mode"
+    
+    def test_option_chain_with_all_expiries(self):
+        """Test option chain with all expiries"""
+        result = process_option_chain_with_analysis(
+            symbol='NIFTY',
+            exchange='NSE',
+            expiry_date='all',
+            no_of_ITM=3,
+            no_of_OTM=3
+        )
+        
+        assert result['success'] == True
+        assert 'available_expiries' in result
+        assert len(result['available_expiries']) > 1, "Should have multiple expiries"
+        
+        # Verify we have multiple expiries in the data using 'expiration' field
+        expiries_in_data = set(opt.get('expiration') for opt in result['data'] if opt.get('expiration'))
+        
+        assert len(expiries_in_data) > 1, "Should have multiple expiries for 'all' mode"
     
     def test_option_chain_specific_expiry(self):
         """Test with specific expiry date"""
-        result = fetch_option_chain_data(
+        # First get available expiries
+        result_all = process_option_chain_with_analysis(
             symbol='NIFTY',
             exchange='NSE',
-            expiry_date=20251202  # Example expiry
+            expiry_date='all',
+            no_of_ITM=1,
+            no_of_OTM=1
+        )
+        
+        assert result_all['success'] == True
+        assert len(result_all['available_expiries']) > 0
+        
+        # Now test with a specific expiry
+        specific_expiry = result_all['available_expiries'][0]
+        result = process_option_chain_with_analysis(
+            symbol='NIFTY',
+            exchange='NSE',
+            expiry_date=specific_expiry,
+            no_of_ITM=5,
+            no_of_OTM=5
         )
         
         assert result['success'] == True
-        assert 'data' in result
+        assert specific_expiry in result['available_expiries']
     
-    # def test_option_chain_different_top_n(self):
-    #     """Test with different top_n values"""
-    #     top_n_values = [3, 5, 10]
+    def test_option_chain_invalid_expiry(self):
+        """Test with invalid expiry - should return available expiries"""
+        result = process_option_chain_with_analysis(
+            symbol='NIFTY',
+            exchange='NSE',
+            expiry_date=20991231,  # Far future date that doesn't exist
+            no_of_ITM=5,
+            no_of_OTM=5
+        )
         
-    #     for top_n in top_n_values:
-    #         result = process_option_chain_with_analysis(
-    #             symbol='NIFTY',
-    #             exchange='NSE',
-    #             expiry_date='latest',
-    #             top_n=top_n
-    #         )
+        assert result['success'] == False
+        assert 'available_expiries' in result
+        assert 'not found' in result['message'].lower()
+    
+    def test_option_chain_different_itm_otm(self):
+        """Test with different ITM/OTM values"""
+        test_cases = [
+            (3, 3),
+            (5, 5),
+            (10, 5),
+            (2, 8)
+        ]
+        
+        for itm, otm in test_cases:
+            result = process_option_chain_with_analysis(
+                symbol='NIFTY',
+                exchange='NSE',
+                expiry_date='nearest',
+                no_of_ITM=itm,
+                no_of_OTM=otm
+            )
             
-    #         assert result['success'] == True
-    #         print(f"✓ top_n={top_n} works")
+            assert result['success'] == True
+            assert result['requested_ITM'] == itm
+            assert result['requested_OTM'] == otm
+            print(f"✓ ITM={itm}, OTM={otm} works - returned {len(result['data'])} options")
     
-    # def test_option_chain_banknifty(self):
-    #     """Test with BANKNIFTY symbol"""
-    #     result = process_option_chain_with_analysis(
-    #         symbol='BANKNIFTY',
-    #         exchange='NSE',
-    #         expiry_date='latest',
-    #         top_n=5
-    #     )
+    def test_option_chain_banknifty(self):
+        """Test with BANKNIFTY symbol"""
+        result = process_option_chain_with_analysis(
+            symbol='BANKNIFTY',
+            exchange='NSE',
+            expiry_date='nearest',
+            no_of_ITM=5,
+            no_of_OTM=5
+        )
         
-    #     assert result['success'] == True
-    #     assert 'spot_price' in result
+        assert result['success'] == True
+        assert 'spot_price' in result
     
-    # def test_invalid_exchange(self):
-    #     """Test with invalid exchange"""
-    #     with pytest.raises(ValidationError):
-    #         process_option_chain_with_analysis(
-    #             symbol='NIFTY',
-    #             exchange='INVALID_EXCHANGE',
-    #             expiry_date='latest',
-    #             top_n=5
-    #         )
+    def test_invalid_exchange(self):
+        """Test with invalid exchange"""
+        with pytest.raises(ValidationError):
+            process_option_chain_with_analysis(
+                symbol='NIFTY',
+                exchange='INVALID_EXCHANGE',
+                expiry_date='nearest',
+                no_of_ITM=5,
+                no_of_OTM=5
+            )
     
-    # def test_invalid_top_n_zero(self):
-    #     """Test with zero top_n"""
-    #     with pytest.raises(ValidationError):
-    #         process_option_chain_with_analysis(
-    #             symbol='NIFTY',
-    #             exchange='NSE',
-    #             expiry_date='latest',
-    #             top_n=0
-    #         )
+    def test_invalid_itm_zero(self):
+        """Test with zero no_of_ITM"""
+        with pytest.raises(ValidationError):
+            process_option_chain_with_analysis(
+                symbol='NIFTY',
+                exchange='NSE',
+                expiry_date='nearest',
+                no_of_ITM=0,
+                no_of_OTM=5
+            )
     
-    # def test_invalid_top_n_negative(self):
-    #     """Test with negative top_n"""
-    #     with pytest.raises(ValidationError):
-    #         process_option_chain_with_analysis(
-    #             symbol='NIFTY',
-    #             exchange='NSE',
-    #             expiry_date='latest',
-    #             top_n=-5
-    #         )
+    def test_invalid_otm_negative(self):
+        """Test with negative no_of_OTM"""
+        with pytest.raises(ValidationError):
+            process_option_chain_with_analysis(
+                symbol='NIFTY',
+                exchange='NSE',
+                expiry_date='nearest',
+                no_of_ITM=5,
+                no_of_OTM=-5
+            )
     
-    # def test_invalid_top_n_too_high(self):
-    #     """Test with top_n exceeding limit"""
-    #     with pytest.raises(ValidationError):
-    #         process_option_chain_with_analysis(
-    #             symbol='NIFTY',
-    #             exchange='NSE',
-    #             expiry_date='latest',
-    #             top_n=25
-    #         )
+    def test_invalid_itm_too_high(self):
+        """Test with no_of_ITM exceeding limit"""
+        with pytest.raises(ValidationError):
+            process_option_chain_with_analysis(
+                symbol='NIFTY',
+                exchange='NSE',
+                expiry_date='nearest',
+                no_of_ITM=25,
+                no_of_OTM=5
+            )
 
 
 if __name__ == '__main__':

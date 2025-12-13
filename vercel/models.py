@@ -64,6 +64,7 @@ class MindsRequest(BaseModel):
 class OptionChainGreeksRequest(BaseModel):
     symbol: str = Field(..., min_length=1, max_length=20, description="Underlying symbol (e.g., 'NIFTY', 'BANKNIFTY'). Required.")
     exchange: str = Field(..., min_length=2, max_length=30, description=f"Stock exchange name (e.g., 'NSE'). Must be one of the valid exchanges. Valid examples: {', '.join(VALID_EXCHANGES[:5])}... Use uppercase format.")
-    expiry_date: Optional[Union[int, str]] = Field(None, description="Option expiry date:\n- None (default): ALL expiries grouped by date\n- 'latest': NEAREST expiry only\n- int YYYYMMDD (e.g., 20251202): SPECIFIC expiry")
-    top_n: Union[int, str] = Field(5, description="Strikes per side (ITM below + OTM >= spot). Default 3, max 20.\nE.g., top_n=5 → 5 ITM + 5 OTM = 10 strikes total.")
+    expiry_date: Optional[Union[int, str]] = Field('nearest', description="Option expiry date:\n- 'nearest' (default): NEAREST expiry only\n- 'all': ALL expiries grouped by date\n- int YYYYMMDD (e.g., 20251202): SPECIFIC expiry")
+    no_of_ITM: Union[int, str] = Field(5, description="Number of In-The-Money strikes. Default 5, max 20.")
+    no_of_OTM: Union[int, str] = Field(5, description="Number of Out-of-The-Money strikes. Default 5, max 20.")
     cookie: Optional[str] = Field(None, description="TradingView cookie string for authentication")

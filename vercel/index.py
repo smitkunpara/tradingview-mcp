@@ -280,13 +280,21 @@ async def get_option_chain_greeks_endpoint(request: OptionChainGreeksRequest):
     Returns strikes with bid/ask, theo prices, delta/gamma/theta/vega/rho, and IV data.
     """
     try:
-        # Validate top_n
+        # Validate no_of_ITM
         try:
-            top_n = int(request.top_n) if isinstance(request.top_n, str) else request.top_n
-            if not (1 <= top_n <= 20):
-                raise ValidationError(f"top_n must be between 1 and 20, got {top_n}")
+            no_of_ITM = int(request.no_of_ITM) if isinstance(request.no_of_ITM, str) else request.no_of_ITM
+            if not (1 <= no_of_ITM <= 20):
+                raise ValidationError(f"no_of_ITM must be between 1 and 20, got {no_of_ITM}")
         except ValueError:
-            raise ValidationError("top_n must be a valid integer")
+            raise ValidationError("no_of_ITM must be a valid integer")
+        
+        # Validate no_of_OTM
+        try:
+            no_of_OTM = int(request.no_of_OTM) if isinstance(request.no_of_OTM, str) else request.no_of_OTM
+            if not (1 <= no_of_OTM <= 20):
+                raise ValidationError(f"no_of_OTM must be between 1 and 20, got {no_of_OTM}")
+        except ValueError:
+            raise ValidationError("no_of_OTM must be a valid integer")
 
 
         # Validate parameters
@@ -300,7 +308,8 @@ async def get_option_chain_greeks_endpoint(request: OptionChainGreeksRequest):
             symbol=symbol,
             exchange=exchange,
             expiry_date=request.expiry_date,
-            top_n=top_n
+            no_of_ITM=no_of_ITM,
+            no_of_OTM=no_of_OTM
         )
 
         # Encode in TOON format

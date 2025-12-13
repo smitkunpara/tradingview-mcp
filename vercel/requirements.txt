@@ -1,11 +1,8 @@
 fastmcp>=0.1.0
 pydantic>=2.0.0
 pytz>=2024.1
-git+https://github.com/smitkunpara/tv-scraper.git
+tradingview-scraper @ git+https://github.com/smitkunpara/tv-scraper.git
 requests>=2.32.4
 python-dotenv>=1.0.0
 python-toon
-setuptools
 fastapi>=0.124.0
-uvicorn[standard]>=0.24.0
-mangum>=0.17.0

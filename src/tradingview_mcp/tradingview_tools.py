@@ -748,19 +748,28 @@ def get_current_spot_price(symbol: str, exchange: str) -> Dict[str, Any]:
 def process_option_chain_with_analysis(
     symbol: str,
     exchange: str,
-    expiry_date: Optional[str] = None,
-    top_n: int = 5
+    expiry_date: Optional[str] = 'nearest',
+    no_of_ITM: int = 5,
+    no_of_OTM: int = 5
 ) -> List[Dict[str, Any]]:
     exchange = validate_exchange(exchange)
     symbol = validate_symbol(symbol)
     
     try:
-        top_n = int(top_n)
+        no_of_ITM = int(no_of_ITM)
     except (ValueError, TypeError):
-        raise ValidationError(f"top_n must be a valid integer. Got: {top_n}")
+        raise ValidationError(f"no_of_ITM must be a valid integer. Got: {no_of_ITM}")
     
-    if top_n <= 0 or top_n > 20:
-        raise ValidationError(f"top_n must be between 1 and 20. Got: {top_n}")
+    if no_of_ITM <= 0 or no_of_ITM > 20:
+        raise ValidationError(f"no_of_ITM must be between 1 and 20. Got: {no_of_ITM}")
+    
+    try:
+        no_of_OTM = int(no_of_OTM)
+    except (ValueError, TypeError):
+        raise ValidationError(f"no_of_OTM must be a valid integer. Got: {no_of_OTM}")
+    
+    if no_of_OTM <= 0 or no_of_OTM > 20:
+        raise ValidationError(f"no_of_OTM must be between 1 and 20. Got: {no_of_OTM}")
     
     try:
         
@@ -774,27 +783,8 @@ def process_option_chain_with_analysis(
         
         spot_price = spot_result['spot_price']
         
-        # Determine the actual expiry to fetch
-        fetch_expiry = None
-        is_latest_mode = False
-        
-        if expiry_date is not None:
-            # Check if user wants latest expiry
-            if isinstance(expiry_date, str) and expiry_date.lower() == 'latest':
-                is_latest_mode = True
-                fetch_expiry = None  # Fetch all to find latest
-            else:
-                # Specific expiry provided
-                try:
-                    fetch_expiry = int(expiry_date) if isinstance(expiry_date, str) else expiry_date
-                except ValueError:
-                    return {
-                        'success': False,
-                        'message': f"Invalid expiry_date format: {expiry_date}. Use integer (YYYYMMDD) or 'latest'"
-                    }
-        
-        # Fetch option chain data
-        option_result = fetch_option_chain_data(symbol, exchange, fetch_expiry)
+        # Always fetch ALL option chain data (no filtering at API level)
+        option_result = fetch_option_chain_data(symbol, exchange, expiry_date=None)
         if not option_result['success']:
             return {
                 'success': False,
@@ -855,6 +845,7 @@ def process_option_chain_with_analysis(
             # Build option info
             option_info = {
                 'symbol': symbol_name,
+                'expiration': expiration,
                 'ask': option_data.get('ask'),
                 'bid': option_data.get('bid'),
                 'delta': option_data.get('delta'),
@@ -892,29 +883,21 @@ def process_option_chain_with_analysis(
             available_otm = len(all_strikes_by_price[atm_index:])
 
             # Determine actual number to return
-            actual_itm = min(top_n, available_itm)
-            actual_otm = min(top_n, available_otm)
+            actual_itm = min(no_of_ITM, available_itm)
+            actual_otm = min(no_of_OTM, available_otm)
 
             itm_strikes = all_strikes_by_price[:atm_index][-actual_itm:] if actual_itm > 0 else []
             otm_strikes = all_strikes_by_price[atm_index:][:actual_otm]
 
             # Add warnings if insufficient data
-            if available_itm < top_n:
+            if available_itm < no_of_ITM:
                 warnings.append(
-                    f"Expiry {expiration}: Requested {top_n} ITM strikes but only {available_itm} available"
+                    f"Expiry {expiration}: Requested {no_of_ITM} ITM strikes but only {available_itm} available"
                 )
 
-            if available_otm < top_n:
+            if available_otm < no_of_OTM:
                 warnings.append(
-                    f"Expiry {expiration}: Requested {top_n} OTM strikes but only {available_otm} available"
-                )
-
-            # Check if top_n is excessive
-            total_available = available_itm + available_otm
-            if top_n > total_available:
-                warnings.append(
-                    f"Expiry {expiration}: Cannot return {top_n} strikes in each direction. "
-                    f"Total strikes available: {total_available}. Returning all available strikes."
+                    f"Expiry {expiration}: Requested {no_of_OTM} OTM strikes but only {available_otm} available"
                 )
 
             # Create flat array for this expiry
@@ -942,48 +925,56 @@ def process_option_chain_with_analysis(
                     })
                     flat_options.append(put_option)
         
+        # Extract all available expiries from the grouped data keys (more reliable than parsing symbol)
+        from datetime import datetime
+        current_date = int(datetime.now().strftime('%Y%m%d'))
+        available_expiries = sorted(list(expiry_groups.keys()))
+        
         # Filter options based on expiry_date parameter
         if expiry_date is not None:
-            if isinstance(expiry_date, str) and expiry_date.lower() == 'latest':
-                # Find latest expiry
-                from datetime import datetime
-                current_date = int(datetime.now().strftime('%Y%m%d'))
-                available_expiries = []
-                for opt in flat_options:
-                    symbol = opt.get('symbol', '')
-                    if 'C' in symbol:
-                        expiry_part = symbol.split('C')[0][-8:]
-                    elif 'P' in symbol:
-                        expiry_part = symbol.split('P')[0][-8:]
-                    else:
-                        continue
-                    try:
-                        exp_date = int(expiry_part)
-                        if exp_date not in available_expiries:
-                            available_expiries.append(exp_date)
-                    except ValueError:
-                        # Skip invalid expiry dates
-                        continue
-
-                available_expiries.sort()
-                latest_expiry = None
+            if isinstance(expiry_date, str) and expiry_date.lower() == 'nearest':
+                # Find nearest future expiry
+                nearest_expiry = None
                 for exp in available_expiries:
                     if exp >= current_date:
-                        latest_expiry = exp
+                        nearest_expiry = exp
                         break
-                if latest_expiry is None and available_expiries:
-                    latest_expiry = available_expiries[-1]
+                if nearest_expiry is None and available_expiries:
+                    # If no future expiry, take the most recent past one
+                    nearest_expiry = available_expiries[-1]
 
-                # Filter for latest expiry
-                if latest_expiry is not None:
-                    flat_options = [opt for opt in flat_options if str(latest_expiry) in opt.get('symbol', '')]
+                # Filter for nearest expiry using expiration field
+                if nearest_expiry is not None:
+                    flat_options = [opt for opt in flat_options if opt.get('expiration') == nearest_expiry]
+                else:
+                    return {
+                        'success': False,
+                        'message': 'No expiry dates found in option chain data',
+                        'available_expiries': available_expiries
+                    }
+            elif isinstance(expiry_date, str) and expiry_date.lower() == 'all':
+                # No filter, keep all
+                pass
             else:
                 # Specific expiry
                 try:
-                    target_expiry = str(int(expiry_date)) if isinstance(expiry_date, str) else str(expiry_date)
-                    flat_options = [opt for opt in flat_options if target_expiry in opt.get('symbol', '')]
+                    target_expiry = int(expiry_date) if isinstance(expiry_date, str) else expiry_date
+                    
+                    # Check if requested expiry exists
+                    if target_expiry not in available_expiries:
+                        return {
+                            'success': False,
+                            'message': f'Expiry date {target_expiry} not found in available data',
+                            'available_expiries': available_expiries
+                        }
+                    
+                    flat_options = [opt for opt in flat_options if opt.get('expiration') == target_expiry]
                 except ValueError:
-                    return [{'success': False, 'message': f'Invalid expiry_date format: {expiry_date}'}]
+                    return {
+                        'success': False,
+                        'message': f'Invalid expiry_date format: {expiry_date}. Use integer (YYYYMMDD), "nearest", or "all"',
+                        'available_expiries': available_expiries
+                    }
 
         # Calculate analytics for the latest expiry (or all data if no specific expiry)
         analytics = {}
@@ -1032,11 +1023,15 @@ def process_option_chain_with_analysis(
             'spot_price': spot_price,
             'latest_expiry': latest_expiry if 'latest_expiry' in locals() else None,
             'analytics': analytics,
-            'data': flat_options
+            'data': flat_options,
+            'available_expiries': available_expiries,
+            'requested_ITM': no_of_ITM,
+            'requested_OTM': no_of_OTM,
+            'returned_count': len(flat_options)
         }
 
         # Add warnings if any
-        if warnings and 'warnings' not in result:
+        if warnings:
             result['warnings'] = warnings
 
         return result
