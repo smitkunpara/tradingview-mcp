@@ -8,9 +8,9 @@
 
 ## Usage
 - **First run**: Open extension popup → Setup screen.
-  - Enter backend URL (e.g., `https://your-app.vercel.app`), API key, and password.
+  - Enter backend URL (e.g., `https://your-app.vercel.app`), X-Admin-Key (from backend's `TV_ADMIN_KEY` env var), and password.
   - Extension verifies backend with GET request, encrypts credentials, and stores in local storage.
-- **Sync cookies**: Open popup → Click **Update** → Enter password.
+- **Sync cookies**: Open popup → Click **Sync Cookies Now** → Enter password.
   - Extension reads TradingView cookies, sends POST to `{backendUrl}/update-cookies` with `X-Admin-Key` header.
 
 ## Permissions

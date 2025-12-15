@@ -73,20 +73,20 @@ The project also includes a FastAPI-based HTTP server that provides the same fun
 
 ```bash
 # Using uv (recommended)
-uv run python src/tradingview_mcp/http_main.py
+uv run python vercel/index.py
 
 # Or using python directly
-python src/tradingview_mcp/http_main.py
+python vercel/index.py
 ```
 
-The server will start on `http://localhost:8000` with automatic API documentation at `http://localhost:8000/docs`.
+The server will start on `http://localhost:4589` with automatic API documentation at `http://localhost:4589/docs`.
 
 **Note:** The HTTP server uses the same environment variables as the MCP server. Make sure your `.env` file contains the `TRADINGVIEW_COOKIE` variable.
 
 ### Example HTTP Request
 
 ```bash
-curl -X POST "http://localhost:8000/historical-data" \
+curl -X POST "http://localhost:4589/historical-data" \
   -H "Content-Type: application/json" \
   -d '{
     "exchange": "NSE",
@@ -148,18 +148,12 @@ All endpoints return structured JSON responses with TOON encoding for efficient 
 
 For Chrome extension installation and usage instructions, see [cookie_updater_extension/README.md](cookie_updater_extension/README.md).
 
-## Vercel Deployment & ChatGPT Integration
+## Setting up Vercel
 
-Deploy to Vercel to expose the FastAPI endpoints. Connect ChatGPT or a custom GPT by calling the endpoints with `X-Client-Key`.
+Deploy to Vercel to expose the FastAPI endpoints.
 
 - **Entrypoint**: `vercel/index.py`
 - **Env vars**: `TRADINGVIEW_COOKIE`, `VERCEL_URL`, `TV_ADMIN_KEY`, `TV_CLIENT_KEY`
-- **Headers**: `X-Admin-Key` (admin), `X-Client-Key` (client)
-
-OpenAPI & Privacy Policy
-- Import spec: `<your-vercel-url>/openapi.json`
-- Privacy policy: `<your-vercel-url>/privacy-policy`
-- `servers[0].url` updates to the latest deployment URL; re-import if needed.
 
 Update-cookies endpoint
 - Endpoint: `POST /update-cookies` (requires `X-Admin-Key`)
@@ -171,6 +165,18 @@ Update-cookies endpoint
     -d '{"cookies": [{"name": "sessionid", "value": "..."}], "source": "extension"}'
   ```
 - No redeploy needed; server updates cookies at runtime.
+
+## Setting up ChatGPT
+
+Connect ChatGPT or a custom GPT by calling the endpoints with `X-Client-Key`.
+
+1. Import the OpenAPI spec: `<your-vercel-url>/openapi.json`
+2. View privacy policy: `<your-vercel-url>/privacy-policy`
+3. In GPT creation:
+   - Select "API" as the action type
+   - Choose "Custom" for authentication
+   - Add custom header: `X-Client-Key` with your `TV_CLIENT_KEY` value
+4. The `servers[0].url` updates to the latest deployment URL; re-import if needed.
 
 
 ## Contributing
