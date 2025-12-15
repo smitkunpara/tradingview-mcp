@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "TV Cookie Sync",
+  "version": "1.0",
+  "description": "Securely syncs TradingView session to Vercel backend.",
+  "permissions": [
+    "cookies",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://*.tradingview.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Sync TV Session"
+  }
+}

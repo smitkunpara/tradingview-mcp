@@ -20,6 +20,35 @@ pip install -e .
 cp .env.example .env  # Copy and edit with your TradingView cookies
 ```
 
+## MCP Server Setup
+
+To use the server with MCP-compatible clients (e.g., VS Code with MCP extension):
+
+1. Create `.vscode/mcp.json` in your workspace root.
+2. Add the following configuration (replace with your values):
+
+```json
+{
+  "servers": {
+    "TradingView": {
+      "command": "uv",
+      "args": [
+        "run",
+        "python",
+        "-m",
+        "src.tradingview_mcp.main"
+      ],
+      "env": {
+        "TRADINGVIEW_COOKIE": "your_tradingview_cookies_here",
+        "TRADINGVIEW_URL": "https://in.tradingview.com/chart/your_chart_id/?symbol=NSE%3ANIFTY",
+      }
+    }
+  }
+}
+```
+
+This sets up the stdio server for MCP integration.
+
 ## Configuration
 
 ### Getting TradingView Cookies
@@ -53,20 +82,6 @@ python src/tradingview_mcp/http_main.py
 The server will start on `http://localhost:8000` with automatic API documentation at `http://localhost:8000/docs`.
 
 **Note:** The HTTP server uses the same environment variables as the MCP server. Make sure your `.env` file contains the `TRADINGVIEW_COOKIE` variable.
-
-### HTTP API Endpoints
-
-All endpoints accept JSON requests and return TOON-encoded responses for token efficiency:
-
-- **POST /historical-data**: Fetch historical OHLCV data with technical indicators
-- **POST /news-headlines**: Get latest news headlines for trading symbols  
-- **POST /news-content**: Fetch full content of news articles
-- **POST /all-indicators**: Get current values for all technical indicators
-- **POST /ideas**: Scrape trading ideas from TradingView community
-- **POST /minds**: Get community discussions (Minds) from TradingView
-- **POST /option-chain-greeks**: Get detailed options chain with Greeks and analytics
-- **GET /privacy-policy**: View privacy policy and disclaimer
-- **GET /**: API information and available endpoints
 
 ### Example HTTP Request
 
@@ -131,19 +146,7 @@ All endpoints return structured JSON responses with TOON encoding for efficient 
 
 ## Extension Configuration
 
-To configure the Chrome extension for updating cookies:
-
-1. Copy `tradingview-extension/config.js.example` to `tradingview-extension/config.js`.
-2. Edit `config.js` and set your server's base URL and admin key:
-   ```js
-   const CONFIG = {
-     SERVER_URL: "https://your-app.vercel.app",
-     ADMIN_KEY: "your-admin-key-here"
-   };
-   ```
-3. **Security Note:** `config.js` is gitignored and should never be committed. Treat the admin key as a secret—only share with trusted users who need to run the extension locally.
-
-The extension imports this config securely at runtime, avoiding exposure in the browser or repo.
+For Chrome extension installation and usage instructions, see [cookie_updater_extension/README.md](cookie_updater_extension/README.md).
 
 ## Vercel Deployment & ChatGPT Integration
 

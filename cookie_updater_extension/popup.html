@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { width: 360px; padding: 15px; font-family: 'Segoe UI', sans-serif; }
+    h3 { margin-top: 0; margin-bottom: 5px; color: #333; text-align: center; }
+    p { font-size: 11px; color: #666; margin-bottom: 15px; text-align: center; }
+    
+    button {
+      background-color: #2962ff; color: white; border: none;
+      padding: 12px; width: 100%; border-radius: 4px; cursor: pointer; font-size: 14px;
+      font-weight: 600; transition: background 0.2s; margin-top: 10px;
+    }
+    button:hover { background-color: #1e4bd1; }
+    button:disabled { background-color: #b0bec5; cursor: wait; }
+    
+    button.secondary {
+      background-color: #6c757d; font-size: 12px; padding: 8px;
+    }
+    button.secondary:hover { background-color: #5a6268; }
+
+    input {
+      width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;
+      box-sizing: border-box; font-size: 13px; margin-top: 8px;
+    }
+    
+    label {
+      display: block; text-align: left; font-size: 12px; color: #555;
+      margin-top: 10px; font-weight: 600;
+    }
+
+    #status { margin-top: 15px; font-size: 12px; min-height: 20px; word-wrap: break-word; text-align: center; }
+    .success { color: #2e7d32; font-weight: bold; background: #e8f5e9; padding: 8px; border-radius: 4px; border: 1px solid #c8e6c9;}
+    .error { color: #c62828; background: #ffebee; padding: 8px; border-radius: 4px; border: 1px solid #ffcdd2;}
+    .warning { color: #f57c00; background: #fff3e0; padding: 8px; border-radius: 4px; border: 1px solid #ffe0b2; font-size: 11px; text-align: left; }
+
+    .loader {
+      border: 3px solid #f3f3f3; border-top: 3px solid #2962ff;
+      border-radius: 50%; width: 20px; height: 20px;
+      animation: spin 1s linear infinite; display: none; margin: 10px auto;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    
+    .screen { display: none; }
+    .screen.active { display: block; }
+    
+    .divider { border-top: 1px solid #e0e0e0; margin: 15px 0; }
+  </style>
+</head>
+<body>
+  <!-- Setup Screen (First Time) -->
+  <div id="setupScreen" class="screen">
+    <h3>Initial Setup</h3>
+    <p>Set up your backend URL, API key and master password</p>
+    
+    <label for="setupBackendUrl">Backend URL:</label>
+    <input type="text" id="setupBackendUrl" placeholder="https://your-backend.vercel.app/update-cookies">
+    
+    <label for="setupApiKey">Backend API Key:</label>
+    <input type="text" id="setupApiKey" placeholder="Enter your admin API key">
+    
+    <label for="setupPassword">Master Password:</label>
+    <input type="password" id="setupPassword" placeholder="Create a strong password">
+    
+    <label for="setupPasswordConfirm">Confirm Password:</label>
+    <input type="password" id="setupPasswordConfirm" placeholder="Re-enter password">
+    
+    <div class="warning" style="margin-top: 15px;">
+      <strong>Important:</strong> Your password cannot be recovered! If you forget it, you'll need to reset the extension and reconfigure your API key.
+    </div>
+    
+    <button id="setupBtn">Complete Setup</button>
+    <div id="setupStatus"></div>
+  </div>
+
+  <!-- Main Screen (Update Cookies) -->
+  <div id="mainScreen" class="screen">
+    <h3>TV Cookie Sync</h3>
+    <p>Securely sync session to Vercel backend</p>
+    
+    <button id="updateBtn">Sync Cookies Now</button>
+    <button id="updateCredentialsBtn" class="secondary">Update URL/API Key</button>
+    <button id="changePasswordBtn" class="secondary">Change Password</button>
+    <button id="resetBtn" class="secondary" style="background-color: #dc3545; color: white;">Reset Extension</button>
+    
+    <div id="loader" class="loader"></div>
+    <div id="status"></div>
+  </div>
+
+  <!-- Password Prompt Screen -->
+  <div id="passwordScreen" class="screen">
+    <h3>Enter Password</h3>
+    <p>Password required to decrypt and sync cookies</p>
+    
+    <label for="passwordInput">Master Password:</label>
+    <input type="password" id="passwordInput" placeholder="Enter your password">
+    
+    <button id="passwordSubmitBtn">Confirm & Sync</button>
+    <button id="passwordCancelBtn" class="secondary">Cancel</button>
+    <div id="passwordStatus"></div>
+  </div>
+
+  <!-- Change Password Screen -->
+  <div id="changePasswordScreen" class="screen">
+    <h3>Change Password</h3>
+    <p>Update your master password</p>
+    
+    <label for="oldPassword">Current Password:</label>
+    <input type="password" id="oldPassword" placeholder="Enter current password">
+    
+    <label for="newPassword">New Password:</label>
+    <input type="password" id="newPassword" placeholder="Enter new password">
+    
+    <label for="newPasswordConfirm">Confirm New Password:</label>
+    <input type="password" id="newPasswordConfirm" placeholder="Re-enter new password">
+    
+    <button id="changePasswordSubmitBtn">Update Password</button>
+    <button id="changePasswordCancelBtn" class="secondary">Cancel</button>
+    <div id="changePasswordStatus"></div>
+  </div>
+
+  <!-- Update Credentials Screen -->
+  <div id="updateCredentialsScreen" class="screen">
+    <h3>Update URL/API Key</h3>
+    <p>Update your backend URL and API key</p>
+    
+    <label for="updateBackendUrl">Backend URL:</label>
+    <input type="text" id="updateBackendUrl" placeholder="*******">
+    
+    <label for="updateApiKey">Backend API Key:</label>
+    <input type="text" id="updateApiKey" placeholder="*******">
+    
+    <label for="updateCredPassword">Master Password:</label>
+    <input type="password" id="updateCredPassword" placeholder="Enter your password">
+    
+    <button id="updateCredentialsSubmitBtn">Verify & Update</button>
+    <button id="updateCredentialsCancelBtn" class="secondary">Cancel</button>
+    <div id="updateCredentialsStatus"></div>
+  </div>
+
+  <!-- Reset Confirmation Screen -->
+  <div id="resetScreen" class="screen">
+    <h3>Reset Extension</h3>
+    <p style="color: #dc3545; font-weight: bold;">Warning: This will permanently delete all your data!</p>
+    <p>Are you sure you want to reset the extension? This will remove your API key, backend URL, and password. You will need to set up everything again.</p>
+    
+    <button id="resetConfirmBtn" style="background-color: #dc3545; color: white;">Yes, Reset Everything</button>
+    <button id="resetCancelBtn" class="secondary">Cancel</button>
+    <div id="resetStatus"></div>
+  </div>
+
+  <!-- Reset Password Verification Screen -->
+  <div id="resetPasswordScreen" class="screen">
+    <h3>Confirm Reset</h3>
+    <p>Enter your master password to confirm reset</p>
+    
+    <label for="resetPassword">Master Password:</label>
+    <input type="password" id="resetPassword" placeholder="Enter your password">
+    
+    <button id="resetPasswordSubmitBtn" style="background-color: #dc3545; color: white;">Confirm Reset</button>
+    <button id="resetPasswordCancelBtn" class="secondary">Cancel</button>
+    <div id="resetPasswordStatus"></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
