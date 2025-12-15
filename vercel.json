@@ -5,6 +5,8 @@
       "src": "vercel/index.py",
       "use": "@vercel/python",
       "config": {
+        "pythonVersion": "3.11",
+        "installer": "uv",
         "maxLambdaSize": "50mb"
       }
     }

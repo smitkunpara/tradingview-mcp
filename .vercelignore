@@ -4,9 +4,6 @@
 # Test files (not needed for deployment)
 tests/
 
-# Project config files
-pyproject.toml
-uv.lock
 
 # MCP stdio server (not needed for HTTP API)
 src/tradingview_mcp/main.py
@@ -17,7 +14,6 @@ src/tradingview_mcp/main.py
 
 # Documentation
 LICENSE
-README.md
 
 # Dot folders
 .github/
@@ -27,4 +23,4 @@ README.md
 .kilocode/
 
 # files
-deploy.py
+vercel/Redeploy.py
