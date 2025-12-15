@@ -26,5 +26,6 @@ debug_result.json
 /chat
 .github
 .vscode
+vercel/requirements.txt
 .vercel
 settings.yml
