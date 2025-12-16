@@ -127,7 +127,6 @@ async def get_news_headlines_endpoint(request: NewsHeadlinesRequest):
             exchange=request.exchange,
             provider=request.provider,
             area=request.area,
-            cookie=request.cookie
         )
 
         if not headlines:
@@ -152,7 +151,7 @@ async def get_news_content_endpoint(request: NewsContentRequest):
     """
     try:
         # Call the core function - pass cookie directly
-        articles = fetch_news_content(request.story_paths, cookie=request.cookie)
+        articles = fetch_news_content(request.story_paths)
 
         # Encode in TOON format
         toon_data = toon_encode({"articles": articles})
@@ -227,7 +226,6 @@ async def get_ideas_endpoint(request: IdeasRequest):
             startPage=startPage,
             endPage=endPage,
             sort=request.sort,
-            cookie=request.cookie
         )
 
         # Encode in TOON format
@@ -262,7 +260,6 @@ async def get_minds_endpoint(request: MindsRequest):
             symbol=symbol,
             exchange=exchange,
             limit=limit,
-            cookie=request.cookie
         )
 
         toon_data = toon_encode(result)
@@ -309,7 +306,7 @@ async def get_option_chain_greeks_endpoint(request: OptionChainGreeksRequest):
             exchange=exchange,
             expiry_date=request.expiry_date,
             no_of_ITM=no_of_ITM,
-            no_of_OTM=no_of_OTM
+            no_of_OTM=no_of_OTM,
         )
 
         # Encode in TOON format
