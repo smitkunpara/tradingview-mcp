@@ -593,16 +593,6 @@ IV (overall/bid/ask), bid/ask/theo prices, intrinsic/time values for CALL/PUT at
 
 def main():
     """Run the MCP server."""
-    print("Starting TradingView MCP Server...")
-    print("Available tools:")
-    print("   - get_historical_data: Fetch OHLCV data with indicators")
-    print("   - get_news_headlines: Get latest news headlines")
-    print("   - get_news_content: Fetch full news articles")
-    print("   - get_all_indicators: Get current values for all technical indicators")
-    print("   - get_ideas: Get trading ideas from TradingView community")
-    print("   - get_minds: Get community discussions from TradingView Minds")
-    print("   - get_option_chain_greeks: Get detailed option chain with full Greeks, IV & analytics")
-    print("\n Server is ready!")
     mcp.run()
 
 

@@ -1391,8 +1391,8 @@ dev = [
 
 [[package]]
 name = "tradingview-scraper"
-version = "0.5.0"
-source = { git = "https://github.com/smitkunpara/tv-scraper.git#9fdd089a977049d9bb84f182f51ec851ee12b617" }
+version = "0.5.2"
+source = { git = "https://github.com/smitkunpara/tv-scraper.git#3f5f46509b68de65f20e4a792a2606d24cbb18ef" }
 dependencies = [
     { name = "beautifulsoup4" },
     { name = "pandas" },

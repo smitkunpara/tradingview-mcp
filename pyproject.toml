@@ -25,3 +25,6 @@ allow-direct-references = true
 
 [dependency-groups]
 dev = ["pytest>=8.0.0", "pytest-mock>=3.12.0"]
+
+[project.scripts]
+tradingview-mcp = "tradingview_mcp.main:main"
