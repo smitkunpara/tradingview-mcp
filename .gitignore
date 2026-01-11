@@ -28,3 +28,4 @@ debug_result.json
 vercel/requirements.txt
 .vercel
 settings.yml
+/temp

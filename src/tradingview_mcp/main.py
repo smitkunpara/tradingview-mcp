@@ -7,9 +7,7 @@ from typing import Annotated, List, Optional, Literal, Union
 from pydantic import Field
 from fastmcp import FastMCP
 from dotenv import load_dotenv
-import json
 from toon import encode as toon_encode
-import os
 
 from .tradingview_tools import (
     fetch_historical_data,

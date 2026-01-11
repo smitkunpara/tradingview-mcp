@@ -2,7 +2,6 @@
 TradingView tools implementation for MCP server.
 """
 
-import json
 from typing import List, Dict, Optional, Any, Tuple
 from tradingview_scraper.symbols.stream import Streamer
 from tradingview_scraper.symbols.news import NewsScraper
@@ -10,7 +9,6 @@ from tradingview_scraper.symbols.technicals import Indicators
 from tradingview_scraper.symbols.ideas import Ideas
 from tradingview_scraper.symbols.minds import Minds
 import jwt
-import os
 import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -347,9 +345,7 @@ def fetch_news_headlines(
         for headline in news_headlines:
             cleared_headline = {
                 "title": headline.get("title"),
-                "provider": headline.get("provider"),
                 "published": headline.get("published"),
-                "source": headline.get("source"),
                 "storyPath": headline.get("storyPath")
             }
             cleared_headlines.append(cleared_headline)
